@@ -85,14 +85,21 @@
 			<Item Name="RFConfig_SubVI_HMCT22##_SettingConfiguration.vi" Type="VI" URL="../RFConfigSubVI/RFConfig_SubVI_HMCT22##_SettingConfiguration.vi"/>
 			<Item Name="SubPanel_RFBlock_Panel_Rev11_v3.vi" Type="VI" URL="../Panels/SubPanel_RFBlock_Panel_Rev11_v3.vi"/>
 		</Item>
+		<Item Name="StandAloneTransientSubVI" Type="Folder" URL="../StandAloneTransientSubVI">
+			<Property Name="NI.DISK" Type="Bool">true</Property>
+		</Item>
 		<Item Name="Utility" Type="Folder">
+			<Item Name="Change_RunNumber.vi" Type="VI" URL="../Utility/Change_RunNumber.vi"/>
 			<Item Name="CreatingName_UsuallyInstrument.vi" Type="VI" URL="../Utility/CreatingName_UsuallyInstrument.vi"/>
+			<Item Name="Determining_Change_RunNumber.vi" Type="VI" URL="../Utility/Determining_Change_RunNumber.vi"/>
 			<Item Name="DoubleArray2StringArray.vi" Type="VI" URL="../DataCollectionSubVI/DoubleArray2StringArray.vi"/>
 			<Item Name="StringArray2StringList.vi" Type="VI" URL="../Utility/StringArray2StringList.vi"/>
 		</Item>
 		<Item Name="IndependentVISApowerDataCollection.vi" Type="VI" URL="../IndependentVISApowerDataCollection.vi"/>
 		<Item Name="SEE_PXI_TopBench_Rev11.vi" Type="VI" URL="../SEE_PXI_TopBench_Rev11.vi"/>
 		<Item Name="StandAlone_ReadData.vi" Type="VI" URL="../StandAlone_ReadData.vi"/>
+		<Item Name="StandAlone_TransientDataCollection.vi" Type="VI" URL="../StandAlone_TransientDataCollection.vi"/>
+		<Item Name="StandAlone_TransientDataRead.vi" Type="VI" URL="../StandAlone_TransientDataRead.vi"/>
 		<Item Name="TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi" Type="VI" URL="../../DataCollectionRev9/TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="instr.lib" Type="Folder">
@@ -121,6 +128,20 @@
 				<Item Name="niDigital PPMU Source.vi" Type="VI" URL="/&lt;instrlib&gt;/niDigital/niDigital.llb/niDigital PPMU Source.vi"/>
 				<Item Name="niDigital Select Function.vi" Type="VI" URL="/&lt;instrlib&gt;/niDigital/niDigital.llb/niDigital Select Function.vi"/>
 				<Item Name="niDigital Selected Function.ctl" Type="VI" URL="/&lt;instrlib&gt;/niDigital/niDigital.llb/niDigital Selected Function.ctl"/>
+				<Item Name="niDMM Close.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Close.vi"/>
+				<Item Name="niDMM Config Measurement.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Config Measurement.vi"/>
+				<Item Name="niDMM Configure Measurement Absolute.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Configure Measurement Absolute.vi"/>
+				<Item Name="niDMM Configure Measurement Digits.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Configure Measurement Digits.vi"/>
+				<Item Name="niDMM Configure Trigger.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Configure Trigger.vi"/>
+				<Item Name="niDMM Fetch.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Fetch.vi"/>
+				<Item Name="niDMM Function To IVI Constant.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Function To IVI Constant.vi"/>
+				<Item Name="niDMM Function.ctl" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Function.ctl"/>
+				<Item Name="niDMM Initialize.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Initialize.vi"/>
+				<Item Name="niDMM Initiate.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Initiate.vi"/>
+				<Item Name="niDMM IVI Error Converter.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM IVI Error Converter.vi"/>
+				<Item Name="niDMM Resolution in Digits.ctl" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Resolution in Digits.ctl"/>
+				<Item Name="niDMM Trigger Source To IVI Constant.vi" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Trigger Source To IVI Constant.vi"/>
+				<Item Name="niDMM Trigger.ctl" Type="VI" URL="/&lt;instrlib&gt;/niDMM/nidmm.llb/niDMM Trigger.ctl"/>
 				<Item Name="niScope Abort.vi" Type="VI" URL="/&lt;instrlib&gt;/niScope/Acquire/Fetch/niScope Abort.vi"/>
 				<Item Name="niScope Close.vi" Type="VI" URL="/&lt;instrlib&gt;/niScope/niScope Close.vi"/>
 				<Item Name="niScope Configure Chan Characteristics.vi" Type="VI" URL="/&lt;instrlib&gt;/niScope/Configure/Vertical/niScope Configure Chan Characteristics.vi"/>
@@ -242,9 +263,13 @@
 			<Item Name="niDigital_64.dll" Type="Document" URL="niDigital_64.dll">
 				<Property Name="NI.PreserveRelativePath" Type="Bool">true</Property>
 			</Item>
+			<Item Name="nidmm_64.dll" Type="Document" URL="nidmm_64.dll">
+				<Property Name="NI.PreserveRelativePath" Type="Bool">true</Property>
+			</Item>
 			<Item Name="niScope_64.dll" Type="Document" URL="niScope_64.dll">
 				<Property Name="NI.PreserveRelativePath" Type="Bool">true</Property>
 			</Item>
+			<Item Name="ReadTextFiles2ExcelCSV_Subvi.vi" Type="VI" URL="../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/ReadTextFiles2ExcelCSV_Subvi.vi"/>
 			<Item Name="SubPanel_DataCollection_Rev11_v17.vi" Type="VI" URL="../Panels/SubPanel_DataCollection_Rev11_v17.vi"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
