@@ -336,29 +336,17 @@ class Results_File:
         return column
         
     @staticmethod
-    def ConvertKeyValueListToDict(list):
-        '''This method converts a list of alternating keys and values to a dictionary.
-        The list must be of a length divisible by 2, and ordered in a
-        ["(key)", "(value)", "(key)", "(value)", ...] fashion.'''
-        
+    def ConvertKeyValueListToDict(list):        
         dict = {}
-        length = len(list)
-        
+        length = len(list)        
         if length % 2 != 0:
-            raise Exception("Length of list not divisible by 2.")
-        
+            raise Exception("Length of list not divisible by 2.")        
         for i in range(0, length, 2):
             dict[list[i]] = list[i + 1]
         
         return dict
     
-# noinspection SpellCheckingInspection
-#clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
-#clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
-
-# noinspection PyUnresolvedReferences,SpellCheckingInspection
-#from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
-
+    
 def register_loop(client2,register_array_addr,array_length):
     outlist = ['0']*array_length
     for i in range(array_length):
@@ -367,18 +355,15 @@ def register_loop(client2,register_array_addr,array_length):
 
 
 def register_record(output_dictionary,register_array_addr,array_length,register_array_vals):
-    for i in range(array_length):
-        
+    for i in range(array_length):        
         output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
     return output_dictionary
 
 
 def enter_values(prompt):
     while True:
-        user_inp = input(prompt + "\n").strip().lower()
-        
-        user_inp_true = input("is " + user_inp + " what you want? [y,n] \n")
-        
+        user_inp = input(prompt + "\n").strip().lower()        
+        user_inp_true = input("is " + user_inp + " what you want? [y,n] \n")        
         if user_inp_true in ['y','n']:
             return user_inp
         else:
@@ -388,51 +373,39 @@ def enter_values(prompt):
 def main():
     run_number = enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers.csv" 
+    filename = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers.csv" 
     print("output log is at the following location")
-    print(filename2)
+    print(filename)
     print()
     input("Please ensure that the device has been powered on through the tester and configured through ACE")
     manager = ClientManager.Create()
-    client = manager.CreateRequestClient("localhost:2357")
-    
-    execute_macro(client,filename2)
-    # client.CloseSession()
-# noinspection SpellCheckingInspection
+    client = manager.CreateRequestClient("localhost:2357")    
+    execute_macro(client,filename)
 
 
 def execute_macro(client,filename):
     
     print("\n")
     
-    input("Are You Certain? Do you see a tone on your output (18GHz)?")
+    input("Are You Certain? Do you see a tone on your output (10GHz)?")
     print("\n")
-    client.AddByComponentId("ADMV1355Board")
-    client.NavigateToPath("Root::System")
-    client.ContextPath = "\System\Subsystem_1\ADMV1355 Board"
-    client.Run("@DefaultView")
-    #Protecting the part so it's chip enabled is booted up safely
-#    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "False", "-1")
-#    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "False", "-1")
- #   client.SetBoolParameter("virtual-parameter-dac_rstb_pin_bool", "False", "-1")
-  #  client.SetBoolParameter("virtual-parameter-ps_en_pin_bool", "False", "-1")
+    
+    client.ContextPath = "\System\Subsystem_1\ADRF6780-042654 RevA\ADRF6780"
+    client.SetBoolParameter("IQ_Mode_Enable", "False", "-1")
+    client.SetBoolParameter("IF_Mode_Enable", "True", "-1")
+    client.Run("@ApplySettings")
+    client.ReadRegister("0")
+    client.ReadRegister("3")
+    client.ReadRegister("6")
+    client.Run("@ReadSettings")
 
     Keep_Looping = True
-    first_run = True
-
-    
-    dict_results = {}
-   
+    first_run = True    
+    dict_results = {}   
     # #csvf = CSV.Results_File( filename )
     csvf = Results_File( filename )
-
-    #input("Please return to LabVIEW to Actually Power on the Part then press a key here to continue")
-    #booting up the part and setting its default values again
-#    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "True", "-1")
-#    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "True", "-1")
-    client.ContextPath = "\System\Subsystem_1\ADMV1355 Board\ADMV1355"
      
-    register_read_array_number = [0,4,5,10,19,318,512,514,515,516,518,519,520,521]
+    register_read_array_number = [0,3,4,5,6]
     register_read_array = [str(x) for x in register_read_array_number]
     print("registers to be recorded")
     print(register_read_array)
@@ -442,41 +415,15 @@ def execute_macro(client,filename):
     print("\n" + "recording data now")
     print("press CTRL + C to end program")
     
-    # Configuration of the ADMV1355, do not uncomment this. It is for reference only
-    
-    # client.WriteRegister("0", "24")
-    # client.WriteRegister("318", "2")
-    # client.WriteRegister("514", "0")
-    # client.WriteRegister("520", "0")
-    # client.WriteRegister("650", "1")
-    # client.WriteRegister("651", "0")
-    # client.WriteRegister("672", "16")
-    # client.WriteRegister("673", "191")
-    # client.WriteRegister("1537", "8")
-    # client.WriteRegister("2048", "0")
-    # client.WriteRegister("2049", "7")
-    # client.WriteRegister("2050", "10")
-    # client.WriteRegister("2052", "170")
-    # client.WriteRegister("2053", "67")
-    # client.WriteRegister("2054", "16")
-    # client.WriteRegister("2058", "0")
-    # client.WriteRegister("2060", "4")
-    
     while Keep_Looping:
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
-        
-        
         current_time = time.strftime("%H:%M:%S")
-            
         current_date = time.strftime("%d/%m/%Y")
         dt = datetime.datetime.now()
-        current_time_ms = str(dt.microsecond/1000)
-        #print(Reg_0)
-                
+        current_time_ms = str(dt.microsecond/1000)                
         dict_results = {}
-        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
-                  
-                   
+        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)                  
+
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
         dict_results["Time_ms"] = current_time_ms
@@ -486,8 +433,12 @@ def execute_macro(client,filename):
         first_run = False
                     
         csvf.WriteDictionary(dict_results) # Write data to data file
+
+        #if we detect a reset/bit flip, need to re write this register
+        if dict_results['Reg_0x3'] != '0167':
+            print('reset needed')
+            client.WriteRegister("3","359")
     
-    # UI.SelectTab("tool.macrorecorder");
 
 
 if __name__ == "__main__":

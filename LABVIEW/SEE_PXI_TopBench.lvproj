@@ -247,13 +247,13 @@
 				<Item Name="Write Delimited Spreadsheet.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/file.llb/Write Delimited Spreadsheet.vi"/>
 				<Item Name="Write Spreadsheet String.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/file.llb/Write Spreadsheet String.vi"/>
 			</Item>
-			<Item Name="Bitfield and Data.ctl" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Bitfield and Data.ctl"/>
+			<Item Name="Bitfield and Data.ctl" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Bitfield and Data.ctl"/>
 			<Item Name="Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi" Type="VI" URL="../Utility/Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi"/>
-			<Item Name="Digital - Cleanup.vi" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Cleanup.vi"/>
-			<Item Name="Digital - Initialize.vi" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Initialize.vi"/>
-			<Item Name="Digital - KBTR - Determine Bitfield Data to Write.vi" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - KBTR - Determine Bitfield Data to Write.vi"/>
-			<Item Name="Digital - Read Configuration Register.vi" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Read Configuration Register.vi"/>
-			<Item Name="Digital - Write Current Beam.vi" Type="VI" URL="/../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Write Current Beam.vi"/>
+			<Item Name="Digital - Cleanup.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Cleanup.vi"/>
+			<Item Name="Digital - Initialize.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Initialize.vi"/>
+			<Item Name="Digital - KBTR - Determine Bitfield Data to Write.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - KBTR - Determine Bitfield Data to Write.vi"/>
+			<Item Name="Digital - Read Configuration Register.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Read Configuration Register.vi"/>
+			<Item Name="Digital - Write Current Beam.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Write Current Beam.vi"/>
 			<Item Name="InitialFileFolderCreation_V2.vi" Type="VI" URL="../DataCollectionSubVI/InitialFileFolderCreation_V2.vi"/>
 			<Item Name="Initialize_VISA_PowerSupplies_Keithley2230G_V1.vi" Type="VI" URL="../PowerConfig/Initialize_VISA_PowerSupplies_Keithley2230G_V1.vi"/>
 			<Item Name="lvanlys.dll" Type="Document" URL="/&lt;resource&gt;/lvanlys.dll"/>
