@@ -1,32 +1,12 @@
-#Version 2
-
-
-# Generated code compatible with Python 2.7+
-
-## Copyright (c) 2025 by Analog Devices, Inc.  All rights reserved.  This software is proprietary to Analog Devices, Inc. and its licensors.
-## This software is provided on an 'as is' basis without any representations, warranties, guarantees or liability of any kind.
-## Use of the software is subject to the terms and conditions of the Clear BSD License ( https://spdx.org/licenses/BSD-3-Clause-Clear.html ).
-
-# Requirements:
-#  - pythonnet
-
-
 import sys
 import time
 import os
 import datetime
-import csv
 
 sys.path.append(r'C:\Program Files\Analog Devices\ACE\Client')
 
 # noinspection SpellCheckingInspection
 import clr  # noqa
-
-# noinspection SpellCheckingInspection
-clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
-clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
-
-from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
 class Results_File:
     def __init__(self, fileName="", debug=False):
         self.__fileName       = fileName
@@ -353,24 +333,11 @@ class Results_File:
         return dict
     
 # noinspection SpellCheckingInspection
-#clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
-#clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
 
 # noinspection PyUnresolvedReferences,SpellCheckingInspection
-#from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
-
-def register_loop(client2,register_array_addr,array_length):
-    outlist = ['0']*array_length
-    for i in range(array_length):
-        outlist[i] = client2.ReadRegister(register_array_addr[i])
-    return outlist
-
-
-def register_record(output_dictionary,register_array_addr,array_length,register_array_vals):
-    for i in range(array_length):
-        
-        output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
-    return output_dictionary
+from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
 
 def enter_values(prompt):
     while True:
@@ -384,74 +351,194 @@ def enter_values(prompt):
             print("re-enter value")
 
 def main():
-    run_number = enter_values("What is the run number?")
+    run_number= enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADAR4002.csv"
+    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3007.csv"
     print("output log is at the following location")
     print(filename2)
     print()
-    input("Please ensure that the device has been powered on through the tester and ACE is open")
+
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
     execute_macro(client,filename2)
-
-
+    # client.CloseSession()
 def execute_macro(client,filename):
-    #input("Please ensure that the device has been powered on through the tester and configured through ACE")
-    client.ContextPath = "\System\Subsystem_1\ADAR4002 Board\ADAR4002"
-    client.NavigateToPath("Root::System.Subsystem_1.ADAR4002 Board.ADAR4002")
-    client.Run("@Digital_Mode_Select")
-    client.SetByteParameter("FirstRank_DSA00", "0", "-1")
-    client.Run("@SingleWrite")
-    client.SetRegister("10","255","-1")
-    client.WriteRegister("10", "255")
-
+    # UI.SelectTab("Root::");
+    client.AddByComponentId("ADAR3006Board")
+    client.NavigateToPath("Root::System")
+    client.ContextPath = "\System\Subsystem_1\ADAR3006 Board"
+    client.Run("@DefaultView")
+    client.ContextPath = "\System\Subsystem_1\ADAR3006 Board\ADAR3006"
+    client.NavigateToPath("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006")
+    client.SetBoolParameter("RX_TXB", "False", "-1")
+    client.Run("@SetupWrite")
+    client.SetBoolParameter("update_spi_pinb_ctl", "True", "-1")
+    client.Run("@PinOrSpiControl")
+    client.Run("@AllBeamUpdate")
+    client.Run("@Temp_Comp_Select")
+    client.Run("@Manual_Temp_Comp_Write")
+    client.Run("@Temp_Comp_Update")
+    # @Subsystem_1.ADAR3006 Board.ADAR3006: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
+    client.SetRegister("10", "255", "-1")
+    client.Run("@ApplySettings")
     client.ReadRegister("10")
-    # UI.SelectTab("tool.macrorecorder");
-    print("\n")
-    
-    input("Are You Certain? Do you see a tone on your output (10GHz)?")
-    print("\n")
+          
+    input("Please ensure that the device has been powered on through the tester and configured through ACE")
 
-
+    # UI.SelectTab("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006");
+    # UI.SelectTab("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006.GeneralWriteRead");
+    # UI.SelectTab("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006");
+    # @Subsystem_1.ADAR3006 Board.ADAR3006: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
+    #ALL = client.Run("@ReadSettings")
+    #print(ALL)
+    #current_time = time.strftime("%H:%M:%S")
+    #print(current_time)
     Keep_Looping = True
     first_run = True
+    #filename = r'C:\Data\ADAR3006\ADAR3006_reg.csv'
     dict_results = {}
-
+   
+    # #csvf = CSV.Results_File( filename )
     csvf = Results_File( filename )
-
-
-    register_read_array_number = [10,11,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,240,241]
-    register_read_array_number = [10]
-    register_read_array = [str(x) for x in register_read_array_number]
-    print(register_read_array)
-    input("Press any key to begin recording")
-    print("recording data now")
+    
+    Reg_8   = 0
+    Reg_A   = -2
+    Reg_12  = 0
+    Reg_13  = 0
+    Reg_14  = 0
+    Reg_42  = 0
+    Reg_51  = 0
+    Reg_53  = 0
+    Reg_55  = 0
+    Reg_57  = 0
+    Reg_58  = 0
+    Reg_59  = 0
+    Reg_5A  = 0
+    Reg_5B  = 0
+    #Reg_5D  = 0
+    Reg_A0  = 0
+    Reg_AD  = 0
+    Reg_130 = 0
+    Reg_11D = 0
+    Reg_3BF = 0
+    Reg_3FF = 0
+    
+    input("Press Enter to begin recording")
+    print("recording started")
     print("press CTRL + C to end program")
-
     while Keep_Looping:
-        output_register_list = register_loop(client,register_read_array,len(register_read_array))
-
+        Reg_8   = client.ReadRegister("8")
+        Reg_A   = client.ReadRegister("10")
+        Reg_12  = client.ReadRegister("18")
+        Reg_13  = client.ReadRegister("19")
+        Reg_14  = client.ReadRegister("20")
+        Reg_42  = client.ReadRegister("66")
+        Reg_51  = client.ReadRegister("81")
+        Reg_53  = client.ReadRegister("83")
+        Reg_55  = client.ReadRegister("85")
+        Reg_57  = client.ReadRegister("87")
+        Reg_58  = client.ReadRegister("88")
+        Reg_59  = client.ReadRegister("89")
+        Reg_5A  = client.ReadRegister("90")
+        Reg_5B  = client.ReadRegister("91")
+           #Reg_5D  = client.ReadRegister("93")
+        Reg_A0  = client.ReadRegister("160")
+        Reg_AD  = client.ReadRegister("173")
+        Reg_130 = client.ReadRegister("304")
+        Reg_11D = client.ReadRegister("285")
+        Reg_3BF = client.ReadRegister("959")
+        Reg_3FF = client.ReadRegister("1023")
+        #Reg_8   = Reg_8.decode().strip('\r\n')
+        #print("attempt 2")
+        #print(Reg_8)
+        
         current_time = time.strftime("%H:%M:%S")
             
         current_date = time.strftime("%d/%m/%Y")
         dt = datetime.datetime.now()
         current_time_ms = str(dt.microsecond/1000)
-        #print(Reg_0)
-
+        
+        Reg_8   = Reg_8.strip('\r\n')
+        Reg_A   = Reg_A.strip('\r\n')
+        Reg_12  = Reg_12.strip('\r\n')
+        Reg_13  = Reg_13.strip('\r\n')
+        Reg_14  = Reg_14.strip('\r\n')
+        Reg_42  = Reg_42.strip('\r\n')
+        Reg_51  = Reg_51.strip('\r\n')
+        Reg_53  = Reg_53.strip('\r\n')
+        Reg_55  = Reg_55.strip('\r\n')
+        Reg_57  = Reg_57.strip('\r\n')
+        Reg_58   = Reg_58.strip('\r\n')
+        Reg_59   = Reg_59.strip('\r\n')
+        Reg_5A   = Reg_5A.strip('\r\n')
+        Reg_5B   = Reg_5B.strip('\r\n')
+        Reg_A0   = Reg_A0.strip('\r\n')
+        Reg_AD   = Reg_AD.strip('\r\n')
+        Reg_130   = Reg_130.strip('\r\n')
+        Reg_11D   = Reg_11D.strip('\r\n')
+        Reg_3BF   = Reg_3BF.strip('\r\n')
+        Reg_3FF   = Reg_3FF.strip('\r\n')
+        
+        
+        # Reg_8   = Reg_8.decode().strip('\r\n')
+        # Reg_A   = Reg_A.decode().strip('\r\n')
+        # Reg_12  = Reg_12.decode().strip('\r\n')
+        # Reg_13  = Reg_13.decode().strip('\r\n')
+        # Reg_14  = Reg_14.decode().strip('\r\n')
+        # Reg_42  = Reg_42.decode().strip('\r\n')
+        # Reg_51  = Reg_51.decode().strip('\r\n')
+        # Reg_53  = Reg_53.decode().strip('\r\n')
+        # Reg_55  = Reg_55.decode().strip('\r\n')
+        # Reg_57  = Reg_57.decode().strip('\r\n')
+        # Reg_58   = Reg_58.decode().strip('\r\n')
+        # Reg_59   = Reg_59.decode().strip('\r\n')
+        # Reg_5A   = Reg_5A.decode().strip('\r\n')
+        # Reg_5B   = Reg_5B.decode().strip('\r\n')
+        # Reg_A0   = Reg_A0.decode().strip('\r\n')
+        # Reg_AD   = Reg_AD.decode().strip('\r\n')
+        # Reg_130   = Reg_130.decode().strip('\r\n')
+        # Reg_11D   = Reg_11D.decode().strip('\r\n')
+        # Reg_3BF   = Reg_3BF.decode().strip('\r\n')
+        # Reg_3FF   = Reg_3FF.decode().strip('\r\n')
+        
         dict_results = {}
-        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
-
+            
+        dict_results["Reg_8"]   = Reg_8
+        dict_results["Reg_A"]   = Reg_A
+        dict_results["Reg_12"]  = Reg_12
+        dict_results["Reg_13"]  = Reg_13
+        dict_results["Reg_14"]  = Reg_14
+        dict_results["Reg_42"]  = Reg_42
+        dict_results["Reg_51"]  = Reg_51
+        dict_results["Reg_53"]  = Reg_53
+        dict_results["Reg_55"]  = Reg_55
+        dict_results["Reg_57"]  = Reg_57
+        dict_results["Reg_58"]  = Reg_58
+        dict_results["Reg_59"]  = Reg_59
+        dict_results["Reg_5A"]  = Reg_5A
+        dict_results["Reg_5B"]  = Reg_5B
+        dict_results["Reg_A0"]  = Reg_A0
+        dict_results["Reg_AD"]  = Reg_AD
+        dict_results["Reg_130"] = Reg_130
+        dict_results["Reg_11D"] = Reg_11D
+        dict_results["Reg_3BF"] = Reg_3BF
+        dict_results["Reg_3FF"] = Reg_3FF
+            
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
-        dict_results["Time_ms"] = current_time_ms
+        dict_results["Time_ms"]         = current_time_ms
         
         if first_run:
             csvf.AutoCreateHeader(dict_results) # Creates header in data file
         first_run = False
                     
         csvf.WriteDictionary(dict_results) # Write data to data file
+    
+    # UI.SelectTab("tool.macrorecorder");
+
+
+
+
 
 if __name__ == "__main__":
     main()
-

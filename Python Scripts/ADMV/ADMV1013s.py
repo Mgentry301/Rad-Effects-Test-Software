@@ -373,7 +373,7 @@ def enter_values(prompt):
 def main():
     run_number = enter_values("What is the run number?")
     print(run_number)
-    filename = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers.csv" 
+    filename = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADMV1013s.csv" 
     print("output log is at the following location")
     print(filename)
     print()

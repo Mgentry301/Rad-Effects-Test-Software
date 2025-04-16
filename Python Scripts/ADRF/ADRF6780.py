@@ -373,11 +373,11 @@ def enter_values(prompt):
 def main():
     run_number = enter_values("What is the run number?")
     print(run_number)
-    filename = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers.csv" 
+    filename = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADRF6870.csv" 
     print("output log is at the following location")
     print(filename)
     print()
-    input("Please ensure that the device has been powered on through the tester and configured through ACE")
+    input("Please ensure that the device has been powered on through the tester \n and ACE is open and navigate to the ADRF6780 panel. Also press enter")
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")    
     execute_macro(client,filename)
@@ -387,7 +387,7 @@ def execute_macro(client,filename):
     
     print("\n")
     
-    input("Are You Certain? Do you see a tone on your output (10GHz)?")
+    
     print("\n")
     
     client.ContextPath = "\System\Subsystem_1\ADRF6780-042654 RevA\ADRF6780"
@@ -398,14 +398,14 @@ def execute_macro(client,filename):
     client.ReadRegister("3")
     client.ReadRegister("6")
     client.Run("@ReadSettings")
-
+    input("Do you see a tone on your output (10GHz)? Also press enter to continue or ctrl+c to quit")
     Keep_Looping = True
     first_run = True    
     dict_results = {}   
     # #csvf = CSV.Results_File( filename )
     csvf = Results_File( filename )
      
-    register_read_array_number = [0,3,4,5,6]
+    register_read_array_number = [0,3,4,5,6,12] 
     register_read_array = [str(x) for x in register_read_array_number]
     print("registers to be recorded")
     print(register_read_array)
