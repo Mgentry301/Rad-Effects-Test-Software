@@ -403,14 +403,25 @@ def main():
 
 def execute_macro(client,filename):
     
-    print("\n")
-    
-    input("Are You Certain? Do you see a tone on your output (18GHz)?")
-    print("\n")
+
     client.AddByComponentId("ADMV1355Board")
     client.NavigateToPath("Root::System")
     client.ContextPath = "\System\Subsystem_1\ADMV1355 Board"
-    client.Run("@DefaultView")
+    client.SetIntParameter("virtual-parameter-band-select", "0", "-1")
+    client.SetIntParameter("DIRECT_LO_SIDEBAND", "0", "-1")
+    client.Run("@ApplySettings")
+    client.SetRegister("2048", "0", "-1")
+    client.SetRegister("2049", "7", "-1")
+    client.SetRegister("2050", "10", "-1")
+    client.SetRegister("2052", "170", "-1")
+    client.SetRegister("2053", "67", "-1")
+    client.SetRegister("2060", "4", "-1")
+    client.Run("@ApplySettings")
+    
+    print("\n")
+    input("Are You Certain? Do you see a tone on your output (18GHz)?")
+    print("\n")
+    
     #Protecting the part so it's chip enabled is booted up safely
 #    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "False", "-1")
 #    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "False", "-1")
