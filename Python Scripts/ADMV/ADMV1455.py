@@ -390,7 +390,7 @@ def main():
     print("output log is at the following location")
     print(filename2)
     print()
-    input("Please ensure that the device has been powered on through the tester and configured through ACE")
+    input("Please ensure that the device has been powered on through the tester and OPEN UP THE DEVICE BLOCK IN ACE (then press enter here)")
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
     execute_macro(client,filename2)
@@ -402,18 +402,20 @@ def execute_macro(client,filename):
     #input("Please ensure that the device has been powered on through the tester and configured through ACE")
     print("\n")
     
-    input("Are You Certain? Do you see a tone on your output (8GHz)?")
+
     print("\n")
     client.AddByComponentId("ADMV1455Board")
     client.NavigateToPath("Root::System")
     client.ContextPath = "\System\Subsystem_1\ADMV1455 Board"
-    client.Run("@DefaultView")
-    #Protecting the part so it's chip enabled is booted up safely
-#    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "False", "-1")
-#    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "False", "-1")
- #   client.SetBoolParameter("virtual-parameter-dac_rstb_pin_bool", "False", "-1")
-  #  client.SetBoolParameter("virtual-parameter-ps_en_pin_bool", "False", "-1")
-
+    client.NavigateToPath("Root::System.Subsystem_1.ADMV1455 Board.ADMV1455")
+    # UI.SelectTab("Root::System.Subsystem_1.ADMV1455 Board");
+    client.ContextPath = "\System\Subsystem_1\ADMV1455 Board\ADMV1455"
+    client.NavigateToPath("Root::System.Subsystem_1.ADMV1455 Board.ADMV1455")
+    # @Subsystem_1.ADMV1455 Board.ADMV1455: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
+    client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1455_Config.csv")
+    client.Run("@ApplySettings")
+    # UI.SelectTab("tool.macrorecorder");
+    input("Are You Certain? Do you see a tone on your output (8GHz)? - press enter once you do")
     Keep_Looping = True
     first_run = True
     #filename = r'C:\Data\ADMV1455\ADMV1455_reg.csv'
@@ -434,6 +436,7 @@ def execute_macro(client,filename):
     
 
     register_read_array_number = [0,4,5,10,19,64,65,67,81,82,83,84,95,160]
+    register_read_array_number = [0,10,260,261,263,334,381,388,514,520,650,651,652,653,672,673,674,2048,2049,2050,2051,2052,2057,2058,2059,2060]
     register_read_array = [str(x) for x in register_read_array_number]
     print(register_read_array)
     input("Press any key to begin recording")
