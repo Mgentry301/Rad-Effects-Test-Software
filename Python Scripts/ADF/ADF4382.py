@@ -386,7 +386,7 @@ def enter_values(prompt):
 def main():
     run_number = enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADMV1455.csv"
+    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADF4382.csv"
     print("output log is at the following location")
     print(filename2)
     print()
@@ -396,26 +396,25 @@ def main():
     execute_macro(client,filename2)
     # client.CloseSession()
 # noinspection SpellCheckingInspection
-
-
 def execute_macro(client,filename):
     #input("Please ensure that the device has been powered on through the tester and configured through ACE")
     print("\n")
     
 
     print("\n")
-    client.AddByComponentId("ADMV1455Board")
+    client.AddByComponentId("ADF4382Board")
     client.NavigateToPath("Root::System")
-    client.ContextPath = "\System\Subsystem_1\ADMV1455 Board"
-    client.NavigateToPath("Root::System.Subsystem_1.ADMV1455 Board.ADMV1455")
-    # UI.SelectTab("Root::System.Subsystem_1.ADMV1455 Board");
-    client.ContextPath = "\System\Subsystem_1\ADMV1455 Board\ADMV1455"
-    client.NavigateToPath("Root::System.Subsystem_1.ADMV1455 Board.ADMV1455")
-    # @Subsystem_1.ADMV1455 Board.ADMV1455: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
-    client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1455_Config.csv")
+    client.ContextPath = "\System\Subsystem_1\ADF4382 Board"
+    client.Run("@DefaultView")
+    client.ContextPath = "\System\Subsystem_1\ADF4382 Board\ADF4382"
+    client.NavigateToPath("Root::System.Subsystem_1.ADF4382 Board.ADF4382")
     client.Run("@ApplySettings")
     # UI.SelectTab("tool.macrorecorder");
-    input("Are You Certain? Do you see a tone on your output (8GHz)? - press enter once you do")
+    # @Subsystem_1.ADMV1455 Board.ADMV1455: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
+    #client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1455_Config.csv") #this is how you import a register config file if you so choose
+    
+    # UI.SelectTab("tool.macrorecorder");
+    input("Are You Certain? Do you see a tone on your output (20GHz)? - press enter once you do")
     Keep_Looping = True
     first_run = True
     #filename = r'C:\Data\ADMV1455\ADMV1455_reg.csv'
@@ -426,46 +425,17 @@ def execute_macro(client,filename):
 
 
 
-    #input("Please return to LabVIEW to Actually Power on the Part then press a key here to continue")
-    #booting up the part and setting its default values again
-#    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "True", "-1")
-#    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "True", "-1")
-
-
     
 
-    register_read_array_number = [0,4,5,10,19,64,65,67,81,82,83,84,95,160]
-    register_read_array_number = [0,10,260,261,263,334,381,388,514,520,650,651,652,653,672,673,674,2048,2049,2050,2051,2052,2057,2058,2059,2060]
+    #register_read_array_number = [0,4,5,10,19,64,65,67,81,82,83,84,95,160]
+    #[0,1,A,10,11,1f,29,2a,2b,2e,3f,40,58,5b]
     register_read_array = [str(x) for x in register_read_array_number]
     print(register_read_array)
     input("Press any key to begin recording")
     print("recording data now")
     print("press CTRL + C to end program")
-    
-    # Configuration of the ADMV1455, do not uncomment this. It is for reference only
-    
-    # client.WriteRegister("0", "24")
-    # client.WriteRegister("334", "10")
-    # client.WriteRegister("388", "1")
-    # client.WriteRegister("514", "0")
-    # client.WriteRegister("520", "0")
-    # client.WriteRegister("650", "1")
-    # client.WriteRegister("651", "0")
-    # client.WriteRegister("652", "0")
-    # client.WriteRegister("653", "0")
-    # client.WriteRegister("672", "16")
-    # client.WriteRegister("673", "191")
-    # client.WriteRegister("674", "18")
-    # client.WriteRegister("2048", "10")
-    # client.WriteRegister("2049", "135")
-    # client.WriteRegister("2050", "0")
-    # client.WriteRegister("2051", "170")
-    # client.WriteRegister("2052", "3")
-    # client.WriteRegister("2057", "0")
-    # client.WriteRegister("2058", "32")
-    # client.WriteRegister("2059", "0")
-    # client.WriteRegister("2060", "4")    
-    
+
+
     while Keep_Looping:
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
         
@@ -502,4 +472,3 @@ def execute_macro(client,filename):
 
 if __name__ == "__main__":
     main()
-
