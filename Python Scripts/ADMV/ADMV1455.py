@@ -412,8 +412,12 @@ def execute_macro(client,filename):
     client.ContextPath = "\System\Subsystem_1\ADMV1455 Board\ADMV1455"
     client.NavigateToPath("Root::System.Subsystem_1.ADMV1455 Board.ADMV1455")
     # @Subsystem_1.ADMV1455 Board.ADMV1455: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
-    client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1455_Config.csv")
-    client.Run("@ApplySettings")
+    
+    
+    #client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1455_Config.csv")
+    #client.Run("@ApplySettings")
+    client.WriteRegister("10","255")
+    
     # UI.SelectTab("tool.macrorecorder");
     input("Are You Certain? Do you see a tone on your output (8GHz)? - press enter once you do")
     Keep_Looping = True

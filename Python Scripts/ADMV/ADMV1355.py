@@ -410,11 +410,13 @@ def execute_macro(client,filename):
     client.ContextPath = "\System\Subsystem_1\ADMV1355 Board"
 
     print("initiated ADMV1355")
-    client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1355_Config.csv")
-    client.Run("@ApplySettings")
-    print("reconfigured ADMV1455")
+    #client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1355_Config.csv")
+    #client.Run("@ApplySettings")
+    #print("reconfigured ADMV1455")
+    client.WriteRegister("10","255")
+    
     print("\n")
-    input(" Do you see a tone on your output (18GHz)? (press enter)")
+    input(" Do you see a tone on your output (34GHz)? (press enter)")
     print("\n")
     
     #Protecting the part so it's chip enabled is booted up safely
