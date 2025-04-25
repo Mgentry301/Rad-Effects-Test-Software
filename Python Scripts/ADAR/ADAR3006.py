@@ -339,6 +339,20 @@ clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
 # noinspection PyUnresolvedReferences,SpellCheckingInspection
 from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
 
+def register_loop(client2,register_array_addr,array_length):
+    outlist = ['0']*array_length
+    for i in range(array_length):
+        outlist[i] = client2.ReadRegister(register_array_addr[i])
+    return outlist
+    
+
+def register_record(output_dictionary,register_array_addr,array_length,register_array_vals):
+    for i in range(array_length):
+        
+        output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
+    return output_dictionary
+
+    
 def enter_values(prompt):
     while True:
         user_inp = input(prompt + "\n").strip().lower()
@@ -423,62 +437,27 @@ def execute_macro(client,filename):
     Reg_3BF = 0
     Reg_3FF = 0
     
+    register_read_array_number = [0,1,10,18,19,20,32,33,48,49,50,51,52,53,54]
+    register_read_array = [str(x) for x in register_read_array_number]
+    print(register_read_array)
+    input("Press any key to begin recording")
+    print("recording data now")
+    print("press CTRL + C to end program")
+    
     input("Press Enter to begin recording")
     print("recording started")
     print("press CTRL + C to end program")
     while Keep_Looping:
-        Reg_8   = client.ReadRegister("8")
-        Reg_A   = client.ReadRegister("10")
-        Reg_12  = client.ReadRegister("18")
-        Reg_13  = client.ReadRegister("19")
-        Reg_14  = client.ReadRegister("20")
-        Reg_42  = client.ReadRegister("66")
-        Reg_51  = client.ReadRegister("81")
-        Reg_53  = client.ReadRegister("83")
-        Reg_55  = client.ReadRegister("85")
-        Reg_57  = client.ReadRegister("87")
-        Reg_58  = client.ReadRegister("88")
-        Reg_59  = client.ReadRegister("89")
-        Reg_5A  = client.ReadRegister("90")
-        Reg_5B  = client.ReadRegister("91")
-           #Reg_5D  = client.ReadRegister("93")
-        Reg_A0  = client.ReadRegister("160")
-        Reg_AD  = client.ReadRegister("173")
-        Reg_130 = client.ReadRegister("304")
-        Reg_11D = client.ReadRegister("285")
-        Reg_3BF = client.ReadRegister("959")
-        Reg_3FF = client.ReadRegister("1023")
-        #Reg_8   = Reg_8.decode().strip('\r\n')
-        #print("attempt 2")
-        #print(Reg_8)
-        
+    
+        output_register_list = register_loop(client,register_read_array,len(register_read_array))
+
         current_time = time.strftime("%H:%M:%S")
             
         current_date = time.strftime("%d/%m/%Y")
         dt = datetime.datetime.now()
         current_time_ms = str(dt.microsecond/1000)
         
-        Reg_8   = Reg_8.strip('\r\n')
-        Reg_A   = Reg_A.strip('\r\n')
-        Reg_12  = Reg_12.strip('\r\n')
-        Reg_13  = Reg_13.strip('\r\n')
-        Reg_14  = Reg_14.strip('\r\n')
-        Reg_42  = Reg_42.strip('\r\n')
-        Reg_51  = Reg_51.strip('\r\n')
-        Reg_53  = Reg_53.strip('\r\n')
-        Reg_55  = Reg_55.strip('\r\n')
-        Reg_57  = Reg_57.strip('\r\n')
-        Reg_58   = Reg_58.strip('\r\n')
-        Reg_59   = Reg_59.strip('\r\n')
-        Reg_5A   = Reg_5A.strip('\r\n')
-        Reg_5B   = Reg_5B.strip('\r\n')
-        Reg_A0   = Reg_A0.strip('\r\n')
-        Reg_AD   = Reg_AD.strip('\r\n')
-        Reg_130   = Reg_130.strip('\r\n')
-        Reg_11D   = Reg_11D.strip('\r\n')
-        Reg_3BF   = Reg_3BF.strip('\r\n')
-        Reg_3FF   = Reg_3FF.strip('\r\n')
-        
+
         
         # Reg_8   = Reg_8.decode().strip('\r\n')
         # Reg_A   = Reg_A.decode().strip('\r\n')
@@ -503,26 +482,7 @@ def execute_macro(client,filename):
         
         dict_results = {}
             
-        dict_results["Reg_8"]   = Reg_8
-        dict_results["Reg_A"]   = Reg_A
-        dict_results["Reg_12"]  = Reg_12
-        dict_results["Reg_13"]  = Reg_13
-        dict_results["Reg_14"]  = Reg_14
-        dict_results["Reg_42"]  = Reg_42
-        dict_results["Reg_51"]  = Reg_51
-        dict_results["Reg_53"]  = Reg_53
-        dict_results["Reg_55"]  = Reg_55
-        dict_results["Reg_57"]  = Reg_57
-        dict_results["Reg_58"]  = Reg_58
-        dict_results["Reg_59"]  = Reg_59
-        dict_results["Reg_5A"]  = Reg_5A
-        dict_results["Reg_5B"]  = Reg_5B
-        dict_results["Reg_A0"]  = Reg_A0
-        dict_results["Reg_AD"]  = Reg_AD
-        dict_results["Reg_130"] = Reg_130
-        dict_results["Reg_11D"] = Reg_11D
-        dict_results["Reg_3BF"] = Reg_3BF
-        dict_results["Reg_3FF"] = Reg_3FF
+        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
             
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
