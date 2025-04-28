@@ -390,7 +390,7 @@ def execute_macro(client,filename):
     client.Run("@ApplySettings")
     client.Run("@ReadSettings")
 
-    input("Are You Certain? Do you see a tone on your output (28GHz)?")
+    input("Are You Certain? Do you see a tone on your output (25/27GHz)?")
 
     Keep_Looping = True
     first_run = True    
@@ -428,9 +428,9 @@ def execute_macro(client,filename):
         csvf.WriteDictionary(dict_results) # Write data to data file
 
         #if we detect a reset/bit flip, need to re write this register
-        if dict_results['Reg_0x3'] != '0181':
+        if dict_results['Reg_0x3'] != '01D7':
             print('reset needed')
-            client.WriteRegister("3","385")
+            client.WriteRegister("3","471")
     
 
 
