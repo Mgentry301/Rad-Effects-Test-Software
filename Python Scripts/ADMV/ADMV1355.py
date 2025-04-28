@@ -373,6 +373,7 @@ def register_record(output_dictionary,register_array_addr,array_length,register_
     return output_dictionary
 
 
+            
 def enter_values(prompt):
     while True:
         user_inp = input(prompt + "\n").strip().lower()
@@ -392,7 +393,7 @@ def main():
     print("output log is at the following location")
     print(filename2)
     print()
-    input("Please ensure that the device has been powered on through the tester and configured through ACE")
+    input("Please ensure that the device has been powered on through the tester and ACE is open (press enter once you've done this)")
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
     
@@ -403,14 +404,19 @@ def main():
 
 def execute_macro(client,filename):
     
-    print("\n")
-    
-    input("Are You Certain? Do you see a tone on your output (18GHz)?")
-    print("\n")
+
     client.AddByComponentId("ADMV1355Board")
     client.NavigateToPath("Root::System")
     client.ContextPath = "\System\Subsystem_1\ADMV1355 Board"
-    client.Run("@DefaultView")
+
+    print("initiated ADMV1355")
+    client.ImportRegisters("C:\Git\Rad-Effects-Test-Software\ACE Macros\ADMV1355_Config.csv")
+    client.Run("@ApplySettings")
+    print("reconfigured ADMV1455")
+    print("\n")
+    input(" Do you see a tone on your output (18GHz)? (press enter)")
+    print("\n")
+    
     #Protecting the part so it's chip enabled is booted up safely
 #    client.SetBoolParameter("virtual-parameter-dut_cen_pin_bool", "False", "-1")
 #    client.SetBoolParameter("virtual-parameter-dut_rstb_pin_bool", "False", "-1")
@@ -433,6 +439,7 @@ def execute_macro(client,filename):
     client.ContextPath = "\System\Subsystem_1\ADMV1355 Board\ADMV1355"
      
     register_read_array_number = [0,4,5,10,19,318,512,514,515,516,518,519,520,521]
+    register_read_array_number = [0,10,318,514,514,520,650,651,672,673,1538,2048,2049,2050,2052,2053,2054,2058,2060]
     register_read_array = [str(x) for x in register_read_array_number]
     print("registers to be recorded")
     print(register_read_array)
