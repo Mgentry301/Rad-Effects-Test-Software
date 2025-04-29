@@ -351,7 +351,16 @@ def register_record(output_dictionary,register_array_addr,array_length,register_
         
         output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
     return output_dictionary
-
+def toggle_selection_TF(statement):
+    print(statement)
+    valid_inputs = {'y','n'}
+    while True:
+        usr_inp = input("please enter y or n \n").strip().lower()
+        
+        if usr_inp in valid_inputs:
+            print("status = " + usr_inp)
+            return usr_inp          
+        else: ("invalid, type y or n")
     
 def enter_values(prompt):
     while True:
@@ -367,16 +376,17 @@ def enter_values(prompt):
 def main():
     run_number= enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3006.csv"
+    reg_corr_flag = toggle_selection_TF("are you enabling register based correction?")
+    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3006_correction_" + reg_corr_flag + ".csv"
     print("output log is at the following location")
     print(filename2)
-    print()
+
 
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
-    execute_macro(client,filename2)
+    execute_macro(client,filename2,reg_corr_flag)
     # client.CloseSession()
-def execute_macro(client,filename):
+def execute_macro(client,filename,reg_corr):
     # UI.SelectTab("Root::");
     client.AddByComponentId("ADAR3006Board")
     client.NavigateToPath("Root::System")
@@ -438,7 +448,9 @@ def execute_macro(client,filename):
     Reg_3FF = 0
     
     register_read_array_number = [0,1,10,18,19,20,32,33,48,49,50,51,52,53,54]
+
     register_read_array = [str(x) for x in register_read_array_number]
+    register_read_comp_array = register_loop(register_read_array_number)
     print(register_read_array)
     input("Press any key to begin recording")
     print("recording data now")
@@ -479,10 +491,21 @@ def execute_macro(client,filename):
         # Reg_11D   = Reg_11D.decode().strip('\r\n')
         # Reg_3BF   = Reg_3BF.decode().strip('\r\n')
         # Reg_3FF   = Reg_3FF.decode().strip('\r\n')
+        if reg_corr == "y":
+            
+            if register_read_comp_array != output_register_list:
+                client.Run("@SoftReset")
+                client.SetRegister("10", "255", "-1")
+                client.Run("@ApplySettings")
+                client.Run("@SetupWrite")
+                client.Run("@PinOrSpiControl")
+                client.Run("@AllBeamUpdate")
         
         dict_results = {}
             
         dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
+        
+       
             
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time

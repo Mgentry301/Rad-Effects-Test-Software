@@ -1,6 +1,7 @@
 ﻿<?xml version='1.0' encoding='UTF-8'?>
 <Project Type="Project" LVVersion="19008000">
 	<Item Name="My Computer" Type="My Computer">
+		<Property Name="NI.SortType" Type="Int">3</Property>
 		<Property Name="server.app.propertiesEnabled" Type="Bool">true</Property>
 		<Property Name="server.control.propertiesEnabled" Type="Bool">true</Property>
 		<Property Name="server.tcp.enabled" Type="Bool">false</Property>
@@ -91,9 +92,12 @@
 		<Item Name="Utility" Type="Folder">
 			<Item Name="Change_RunNumber.vi" Type="VI" URL="../Utility/Change_RunNumber.vi"/>
 			<Item Name="CreatingName_UsuallyInstrument.vi" Type="VI" URL="../Utility/CreatingName_UsuallyInstrument.vi"/>
+			<Item Name="DoubleArray2StringArray.vi" Type="VI" URL="../DoubleArray2StringArray.vi"/>
 			<Item Name="Determining_Change_RunNumber.vi" Type="VI" URL="../Utility/Determining_Change_RunNumber.vi"/>
-			<Item Name="DoubleArray2StringArray.vi" Type="VI" URL="../DataCollectionSubVI/DoubleArray2StringArray.vi"/>
+			<Item Name="ReadTextFiles2ExcelCSV.vi" Type="VI" URL="../Utility/ReadTextFiles2ExcelCSV.vi"/>
+			<Item Name="ReadTextFiles2ExcelCSV_Subvi.vi" Type="VI" URL="../Utility/ReadTextFiles2ExcelCSV_Subvi.vi"/>
 			<Item Name="StringArray2StringList.vi" Type="VI" URL="../Utility/StringArray2StringList.vi"/>
+			<Item Name="Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi" Type="VI" URL="../Utility/Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi"/>
 		</Item>
 		<Item Name="IndependentVISApowerDataCollection.vi" Type="VI" URL="../IndependentVISApowerDataCollection.vi"/>
 		<Item Name="SEE_PXI_TopBench_Rev11.vi" Type="VI" URL="../SEE_PXI_TopBench_Rev11.vi"/>
@@ -248,7 +252,6 @@
 				<Item Name="Write Spreadsheet String.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/file.llb/Write Spreadsheet String.vi"/>
 			</Item>
 			<Item Name="Bitfield and Data.ctl" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Bitfield and Data.ctl"/>
-			<Item Name="Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi" Type="VI" URL="../Utility/Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi"/>
 			<Item Name="Digital - Cleanup.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Cleanup.vi"/>
 			<Item Name="Digital - Initialize.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Initialize.vi"/>
 			<Item Name="Digital - KBTR - Determine Bitfield Data to Write.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - KBTR - Determine Bitfield Data to Write.vi"/>
@@ -269,7 +272,6 @@
 			<Item Name="niScope_64.dll" Type="Document" URL="niScope_64.dll">
 				<Property Name="NI.PreserveRelativePath" Type="Bool">true</Property>
 			</Item>
-			<Item Name="ReadTextFiles2ExcelCSV_Subvi.vi" Type="VI" URL="../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/ReadTextFiles2ExcelCSV_Subvi.vi"/>
 			<Item Name="SubPanel_DataCollection_Rev11_v17.vi" Type="VI" URL="../Panels/SubPanel_DataCollection_Rev11_v17.vi"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>

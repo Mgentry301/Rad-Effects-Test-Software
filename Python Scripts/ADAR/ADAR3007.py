@@ -346,7 +346,16 @@ def register_loop(client2,register_array_addr,array_length):
         outlist[i] = client2.ReadRegister(register_array_addr[i])
     return outlist
     
-
+def toggle_selection_TF(statement):
+    print(statement)
+    valid_inputs = {'y','n'}
+    while True:
+        usr_inp = input("please enter y or n \n").strip().lower()
+        if usr_inp in valid_inputs:
+            print("status = " + usr_inp)
+            return usr_inp          
+        else: ("invalid, type y or n")
+    
 def register_record(output_dictionary,register_array_addr,array_length,register_array_vals):
     for i in range(array_length):
         
@@ -368,16 +377,17 @@ def enter_values(prompt):
 def main():
     run_number= enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3007.csv"
+    reg_corr_flag = toggle_selection_TF("are you enabling register based correction?")
+    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3007_correction_" + reg_corr_flag +".csv"
     print("output log is at the following location")
     print(filename2)
     print()
 
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
-    execute_macro(client,filename2)
+    execute_macro(client,filename2,reg_corr_flag)
     # client.CloseSession()
-def execute_macro(client,filename):
+def execute_macro(client,filename,reg_corr):
     # UI.SelectTab("Root::");
     client.AddByComponentId("ADAR3006Board")
     client.NavigateToPath("Root::System")
@@ -439,15 +449,20 @@ def execute_macro(client,filename):
     Reg_3FF = 0
     
     register_read_array_number = [0,1,10,18,19,20,32,33,48,49,50,51,52,53,54]
+    
     register_read_array = [str(x) for x in register_read_array_number]
+    register_read_comp_array = register_loop(client,register_read_array_number,len(register_read_array))
     print(register_read_array)
     
     input("Press Enter to begin recording")
     print("recording started")
     print("press CTRL + C to end program")
+    inc = 0
     while Keep_Looping:
-    
+        inc = inc + 1
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
+        if inc == 200:
+            output_register_list[0] = "213"
         #Reg_8   = Reg_8.decode().strip('\r\n')
         #print("attempt 2")
         #print(Reg_8)
@@ -482,6 +497,17 @@ def execute_macro(client,filename):
         # Reg_3BF   = Reg_3BF.decode().strip('\r\n')
         # Reg_3FF   = Reg_3FF.decode().strip('\r\n')
         
+        if reg_corr == "y":
+            
+            if register_read_comp_array != output_register_list:
+                client.Run("@SoftReset")
+                client.SetRegister("10", "255", "-1")
+                client.Run("@ApplySettings")
+                client.Run("@SetupWrite")
+                client.Run("@PinOrSpiControl")
+                client.Run("@AllBeamUpdate")
+                #client.Run("@SoftReset")
+                print("reset occurred")
         dict_results = {}
             
         dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
@@ -489,7 +515,11 @@ def execute_macro(client,filename):
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
         dict_results["Time_ms"]         = current_time_ms
-        
+        if reg_corr == "y":
+            if register_read_comp_array != output_register_list:
+                dict_results["reg_upset"] = "1"
+            else:
+                dict_results["reg_upset"] = "0"
         if first_run:
             csvf.AutoCreateHeader(dict_results) # Creates header in data file
         first_run = False
@@ -504,3 +534,83 @@ def execute_macro(client,filename):
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+ #   def record_registers(run_num, START_TOKEN, CONFIG_TOKEN, POWER_CYC_TOKEN, STOP_TOKEN)
+ """def record_registers(run_num, START_TOKEN, CONFIG_TOKEN, POWER_CYC_TOKEN, STOP_TOKEN):
+    # Establishing Communication with ACE and ADMV1013
+    print("Establishing Communication with DUT...")
+
+    sys.path.append(r'C:\Program Files\Analog Devices\ACE\Client')
+    clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+
+    from AnalogDevices.Csa.Remoting.Clients import ClientManager
+    manager = ClientManager.Create()
+    client = manager.CreateRequestClient("localhost:2357")
+    client.set_ContextPath("\System\Subsystem_1\ADMV1013-044718 RevA")
+    client.Run("@Wizard") # sets nanoDAC voltage at 1.8V
+    client.set_ContextPath("\System\Subsystem_1\ADMV1013-044718 RevA\ADMV1013")
+
+    # Configuring ADMV1013
+    print("Setting up DUT...")
+
+    df = pd.read_csv(r"REG_CONFIGS\ADMV1013_Register_Config.csv") # brings in config values
+
+    CONFIG_VALS = [] # string type
+    for i in df.columns: # creates vector of register configuration values based on config file
+        value = str(int(df[i][0], 16))
+        CONFIG_VALS.append(value)
+    REG_NUM = [] # string type
+    for i in df.columns: # creates vector of write accessible registers
+        value = str(int(i, 16))
+        REG_NUM.append(value)
+
+    config_registers(REG_NUM, CONFIG_VALS, client)
+
+    # Initializing Register DataFrame
+    reg_columns = ["Date", "Time", "ms"]
+    for i in REG_NUM:
+        reg_columns.append(i)
+
+    df_r = pd.DataFrame(columns = reg_columns) # creates register dataframe
+
+    while (START_TOKEN.value == 0): # sleep while other processes initialize
+        sleep(0.1)
+
+    # Gathering Register Values
+    print("Recording Registers...")
+
+    while (STOP_TOKEN.value == 0):
+        current_time = dt.datetime.now() # getting start time of one iteration of reading registers
+        date = current_time.strftime("%m-%d-%Y")
+        time = current_time.strftime("%H:%M:%S")
+        ms = str(int(current_time.strftime("%f")) / 1000)
+
+        values = [date, time, ms]
+        client.Run("@ReadSettings")
+        for i in range(len(REG_NUM)):
+            value = client.ReadRegister(REG_NUM[i]) # reads value from register
+            value = value.strip('\r\n')
+            value = str(int(value, 16))
+            values.append(value) # appends register value to list of all register values
+
+        df_r.loc[len(df_r.index)] = values # appends register values to dataframe
+
+        if (CONFIG_TOKEN.value == 1):
+            sleep(0.1) # wait while comparator triggers RST pin
+
+        if (CONFIG_TOKEN.value == 2):
+            config_registers(REG_NUM, CONFIG_VALS, client) # config back into BBIQ mode
+            CONFIG_TOKEN.value = 0 # reset CONFIG_TOKEN back to 0 to allow PXA to be recorded
+
+        while (POWER_CYC_TOKEN.value == 1): # waits while DUT is being power cycled
+            sleep(0.1)
+
+        if (POWER_CYC_TOKEN.value == 2): # Reset DUT and set BBIQ mode
+            client.Run("@Reset")
+            client.SetRegister(REG_NUM[3], CONFIG_VALS[3], "-1")
+            POWER_CYC_TOKEN.value = 0 # deassert POWER_CYC_TOKEN
+
+    print("Saving Register Data...")
+    df_r.to_csv(r'DATA\ADMV1013\\' + run_num + 'R' + '.csv') # output the dataframe to a .csv

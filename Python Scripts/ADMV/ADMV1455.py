@@ -372,6 +372,17 @@ def register_record(output_dictionary,register_array_addr,array_length,register_
         output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
     return output_dictionary
 
+def toggle_selection_TF(statement):
+    print(statement)
+    valid_inputs = {'y','n'}
+    while True:
+        usr_inp = input("please enter y or n").strip().lower()
+        if usr_inp in valid_inputs:
+            print("status = " + usr_inp)
+            return usr_inp          
+        else: ("invalid, type y or n")
+    
+
 def enter_values(prompt):
     while True:
         user_inp = input(prompt + "\n").strip().lower()
