@@ -16,6 +16,8 @@ import time
 import os
 import datetime
 import csv
+import json
+import importlib
 
 sys.path.append(r'C:\Program Files\Analog Devices\ACE\Client')
 
@@ -277,8 +279,10 @@ class Results_File:
         '''If a CSV file is loaded and valid, this function will fetch an
         entire column from the file.'''
         if self.__debug:
-            print ("called: 'FetchColumn()'")        
-        column = []        
+            print ("called: 'FetchColumn()'")
+        
+        column = []
+        
         exists = os.path.exists(self.__fileName)
         if (exists and self.__genHeaderYet):
         
@@ -329,24 +333,22 @@ class Results_File:
                 for line in lines[1:]:
                     column.append( line.split(',')[index] )
             except:
-                pass            
+                pass
+            
         return column
         
     @staticmethod
-    def ConvertKeyValueListToDict(list):
-        '''This method converts a list of alternating keys and values to a dictionary.
-        The list must be of a length divisible by 2, and ordered in a
-        ["(key)", "(value)", "(key)", "(value)", ...] fashion.'''        
+    def ConvertKeyValueListToDict(list):        
         dict = {}
-        length = len(list)
-        
+        length = len(list)        
         if length % 2 != 0:
             raise Exception("Length of list not divisible by 2.")        
         for i in range(0, length, 2):
             dict[list[i]] = list[i + 1]
+        
         return dict
-
-
+    
+    
 def register_loop(client2,register_array_addr,array_length):
     outlist = ['0']*array_length
     for i in range(array_length):
@@ -363,63 +365,75 @@ def register_record(output_dictionary,register_array_addr,array_length,register_
 def enter_values(prompt):
     while True:
         user_inp = input(prompt + "\n").strip().lower()        
-        return user_inp    
+        user_inp_true = input("is " + user_inp + " what you want? [y,n] \n")        
+        if user_inp_true in ['y','n']:
+            return user_inp
+        else:
+            print("re-enter value")
+            
+def load_product_config(file_path):
+    with open(file_path, 'r') as f:
+        return json.load(f)
+    
+def execute_logic(client, logic_path,logic_name):
+    initial_path = sys.path.copy()  # Save the original sys.path
+    module_dir = logic_path
+    module_name, function_name = logic_name.rsplit('.', 1)
+
+    # Add the module's directory to sys.path
+    if module_dir not in sys.path:
+        sys.path.append(module_dir)
+
+    # Import the module and execute the function
+    module = importlib.import_module(module_name)
+    logic_function = getattr(module, function_name)
+    logic_function(client)
+    sys.path = initial_path  # Reset sys.path to its original state
+
 
 def main():
-    run_number = enter_values("What is the run number?")
+    prod_family = "ADMV" #input("What is the product family?\n")
+    prod_name = "ADMV1013s" #input("What is the product name?\n")
+    config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
+    config = load_product_config(config_file)
+    run_number = 1#enter_values("What is the run number?")
     print(run_number)
-    filename2 = r'C:\Data\dump2' + os.sep + "run_" + run_number + "_registers.csv"
-    filename2 = r'C:\Data\dump' + os.sep + "run_" + run_number + os.sep + "registers.csv" 
+    filename = rf'C:\Campaigns\{config['campaign']}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config['product_name']}.csv'
     print("output log is at the following location")
-    print(filename2)
-    print()
-    input("Please ensure that the device has been powered on through the tester and configured through ACE")
+    print(filename)
+    input("Please ensure that ACE is open")
     manager = ClientManager.Create()
-    client = manager.CreateRequestClient("localhost:2357")
-    
-    execute_macro(client,filename2)
+    client = manager.CreateRequestClient("localhost:2357")    
+    execute_macro(client, filename, config)
 
 
-def execute_macro(client,filename):
-    
-    print("\n")
-    
-    input("Are You Certain? Do you see a tone on your output (18GHz)?")
-    print("\n")
-    client.AddByComponentId("ADMV1355Board")
-    client.NavigateToPath("Root::System")
-    client.ContextPath = "\System\Subsystem_1\ADMV1355 Board"
-    client.Run("@DefaultView")
+def execute_macro(client,filename,config):
+    execute_logic(client,config['logic_path'],config['logic_name'])
+
+    input(config['performance_check'])
 
     Keep_Looping = True
-    first_run = True
+    first_run = True    
     dict_results = {}   
     csvf = Results_File( filename )
-    client.ContextPath = "\System\Subsystem_1\ADMV1355 Board\ADMV1355"
-
-    register_read_array_number = [0,4,5,10,19,318,512,514,515,516,518,519,520,521]
-    register_read_array = [str(x) for x in register_read_array_number]
+     
+    register_read_array = [str(x) for x in config['register_read_array']]
     print("registers to be recorded")
     print(register_read_array)
-    print("\n")
-    input("Press any key to begin recording")
+    input("\nPress any key to begin recording")
     
     print("\n" + "recording data now")
     print("press CTRL + C to end program")
-
     
     while Keep_Looping:
-        output_register_list = register_loop(client,register_read_array,len(register_read_array))       
-         
+        output_register_list = register_loop(client,register_read_array,len(register_read_array))
         current_time = time.strftime("%H:%M:%S")
-            
         current_date = time.strftime("%d/%m/%Y")
         dt = datetime.datetime.now()
-        current_time_ms = str(dt.microsecond/1000)
-
+        current_time_ms = str(dt.microsecond/1000)                
         dict_results = {}
-        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)
-                  
+        dict_results = register_record(dict_results,register_read_array,len(register_read_array),output_register_list)                  
+
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
         dict_results["Time_ms"] = current_time_ms
@@ -429,7 +443,16 @@ def execute_macro(client,filename):
         first_run = False
                     
         csvf.WriteDictionary(dict_results) # Write data to data file
-    
+
+        #if we detect a reset/bit flip, need to re write this register
+        for reg in config['expected_register_values']:
+            if dict_results[reg] != config['expected_register_values'][reg]:
+                print('reset needed')
+                decimal = int(config['expected_register_values'][reg], 16)
+                register = reg.split("x")[-1]
+                client.WriteRegister(register,str(decimal))
+                print("wrote register " + reg + " with value " + config['expected_register_values'][reg])    
+
 
 if __name__ == "__main__":
     main()

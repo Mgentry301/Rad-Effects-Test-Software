@@ -1,0 +1,14 @@
+{
+    "product_name": "ADMV1013",
+    "register_read_array": [0, 3, 5, 6, 7, 8, 9],
+    "context_path": "\\System\\Subsystem_1\\ADMV1013-044718 RevA\\ADMV1013",
+    "performance_check": "Are You Certain? Do you see a tone on your output (25/27GHz)?",
+    "campaign": "TAMU_May_2025",
+    "expected_register_values": {
+        "Reg_0x3": "01D7"
+    },
+    "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADMV",
+    "logic_name": "ADMV1013s_logic.logic"
+
+
+}
