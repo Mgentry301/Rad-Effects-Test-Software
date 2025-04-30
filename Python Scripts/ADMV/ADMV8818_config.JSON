@@ -1,54 +1,49 @@
 {
-    "product_name": "ADMV1013",
-    "register_read_array": [0, 3, 5, 6, 7, 8, 9],
-    "performance_check": "Are You Certain? Do you see a tone on your output (25/27GHz)?",
+    "product_name": "ADMV8818",
+    "register_read_array": [22],
+    "performance_check": "Do you see a tone on your output (12.25GHz)?",
     "campaign": "TAMU_May_2025",
     "expected_register_values": {
-        "Reg_0x3": "01D7"
+        "Reg_0x22": "001C"
     },
     "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADMV",
-    "logic_name": "ADMV1013s_logic.logic",
+    "logic_name": "ADMV8818_logic.logic",
 
     "power_supplies": {
         "Slot_4": {
-            "name": "Red 5v",            
+            "name": "Red 3.3v",            
             "card_number": 4139,
-            "voltage": 5,
+            "voltage": 3.3,
             "current_limit": 3,
             "measure_reccord_length": 1e6,
             "aperature_time": 1e-3
         },
         "Slot_5": {
             "card_number": 4139,
-            "voltage": 3.3,
-            "name": "Orange 3.3v",
+            "voltage": 2.5,
+            "name": "Orange 2.5v",
             "current_limit": 3,
             "measure_reccord_length": 1e6,
             "aperature_time": 1e-3
         },
         "Slot_6": {
             "card_number": 4139,
-            "voltage": 1.8,
-            "name": "Yellow 1.8v", 
+            "voltage": -2.5,
+            "name": "Yellow -2.5v", 
             "current_limit": 3,
             "measure_reccord_length": 1e6,
             "aperature_time": 1e-3
-        }
+        }      
 
     },
     "signal_generators":{
         "Gen_1": {
-            "frequency": 7e9,
-            "power": 10,
-            "name": "LO",
-            "GPIB_address": 12
-        },
-        "Gen_2": {
-            "frequency": 6.5e9,
+            "frequency": 8e9,
             "power": 0,
-            "name": "IF",
-            "GPIB_address": 27
-        }   
+            "name": "RF_IN",
+            "GPIB_address": 12
+        }
+ 
     }
 
 }

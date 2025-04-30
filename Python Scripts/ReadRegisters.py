@@ -14,8 +14,8 @@
 import sys
 import time
 import os
+import re
 import datetime
-import csv
 import json
 import importlib
 
@@ -392,11 +392,11 @@ def execute_logic(client, logic_path,logic_name):
 
 
 def main():
-    prod_family = "ADMV" #input("What is the product family?\n")
-    prod_name = "ADMV1013s" #input("What is the product name?\n")
+    prod_name = input("\nWhat is the product name?\n")
+    prod_family = re.match(r"([a-zA-Z]*)(\d.*)", prod_name).group(1)
     config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
     config = load_product_config(config_file)
-    run_number = 1#enter_values("What is the run number?")
+    run_number = enter_values("What is the run number?")
     print(run_number)
     filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
     print("output log is at the following location")
@@ -446,7 +446,7 @@ def execute_macro(client,filename,config):
 
         #if we detect a reset/bit flip, need to re write this register
         for reg in config['expected_register_values']:
-            if dict_results[reg] != config['expected_register_values'][reg]:
+            if dict_results[reg].upper() != config['expected_register_values'][reg]:
                 print('reset needed')
                 decimal = int(config['expected_register_values'][reg], 16)
                 register = reg.split("x")[-1]
