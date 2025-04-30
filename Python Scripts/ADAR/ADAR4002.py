@@ -448,6 +448,7 @@ def execute_macro(client,filename,reg_corr):
                 client.Run("@SoftReset")
                 client.WriteRegister("10","255")
                 #time.sleep(2)
+                client.SetByteParameter("FirstRank_DSA00", "0", "-1")
                 client.Run("@SingleWrite")
                 
         #print(Reg_0)
