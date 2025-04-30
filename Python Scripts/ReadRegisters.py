@@ -398,7 +398,7 @@ def main():
     config = load_product_config(config_file)
     run_number = 1#enter_values("What is the run number?")
     print(run_number)
-    filename = rf'C:\Campaigns\{config['campaign']}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config['product_name']}.csv'
+    filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
     print("output log is at the following location")
     print(filename)
     input("Please ensure that ACE is open")

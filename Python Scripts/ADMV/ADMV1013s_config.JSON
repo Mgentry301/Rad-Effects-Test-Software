@@ -8,7 +8,35 @@
         "Reg_0x3": "01D7"
     },
     "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADMV",
-    "logic_name": "ADMV1013s_logic.logic"
+    "logic_name": "ADMV1013s_logic.logic",
 
+    "power_supplies": {
+        "Slot_4": {
+            "card_number": 4139,
+            "voltage": 5
+        },
+        "Slot_5": {
+            "card_number": 4139,
+            "voltage": 3.3
+        },
+        "Slot_6": {
+            "card_number": 4139,
+            "voltage": 1.8
+        },
+        "Ch_0": {
+            "card_number": 4163,
+            "voltage": 1.8
+        }
+    },
+    "signal_generators":{
+        "GPIB_12": {
+            "frequency": 7e9,
+            "power": 10
+        },
+        "GPIB_27": {
+            "frequency": 6.5e9,
+            "power": 0
+        }   
+    }
 
 }
