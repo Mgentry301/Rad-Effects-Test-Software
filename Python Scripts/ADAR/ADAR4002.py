@@ -362,9 +362,9 @@ class Results_File:
 def register_loop(client2,register_array_addr,array_length):
     outlist = ['0']*array_length
     for i in range(array_length):
+        #print(register_array_addr[i])
         outlist[i] = client2.ReadRegister(register_array_addr[i])
     return outlist
-
 
 def register_record(output_dictionary,register_array_addr,array_length,register_array_vals):
     for i in range(array_length):
@@ -372,6 +372,17 @@ def register_record(output_dictionary,register_array_addr,array_length,register_
         output_dictionary["Reg_" + str(hex(int(register_array_addr[i])))] = register_array_vals[i].strip('\r\n')
     return output_dictionary
 
+def toggle_selection_TF(statement):
+    print(statement)
+    valid_inputs = {'y','n'}
+    while True:
+        usr_inp = input("please enter y or n \n").strip().lower()
+        
+        if usr_inp in valid_inputs:
+            print("status = " + usr_inp)
+            return usr_inp          
+        else: ("invalid, type y or n")
+    
 def enter_values(prompt):
     while True:
         user_inp = input(prompt + "\n").strip().lower()
@@ -383,20 +394,7 @@ def enter_values(prompt):
         else:
             print("re-enter value")
 
-def main():
-    run_number = enter_values("What is the run number?")
-    print(run_number)
-    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADAR4002.csv"
-    print("output log is at the following location")
-    print(filename2)
-    print()
-    input("Please ensure that the device has been powered on through the tester and ACE is open")
-    manager = ClientManager.Create()
-    client = manager.CreateRequestClient("localhost:2357")
-    execute_macro(client,filename2)
-
-
-def execute_macro(client,filename):
+def execute_macro(client,filename,reg_corr):
     #input("Please ensure that the device has been powered on through the tester and configured through ACE")
     client.ContextPath = "\System\Subsystem_1\ADAR4002 Board\ADAR4002"
     client.NavigateToPath("Root::System.Subsystem_1.ADAR4002 Board.ADAR4002")
@@ -408,10 +406,6 @@ def execute_macro(client,filename):
 
     client.ReadRegister("10")
     # UI.SelectTab("tool.macrorecorder");
-    print("\n")
-    
-    input("Are You Certain? Do you see a tone on your output (10GHz)?")
-    print("\n")
 
 
     Keep_Looping = True
@@ -421,15 +415,24 @@ def execute_macro(client,filename):
     csvf = Results_File( filename )
 
 
-    register_read_array_number = [10,11,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,240,241]
-    register_read_array_number = [10]
+    #register_read_array_number = [10,11,16,17,18,19,20,21,22,23,24,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,240,241]
+    register_read_array_number = [0,10,23,24,35,241]
     register_read_array = [str(x) for x in register_read_array_number]
+    register_read_comp_array = register_loop(client,register_read_array,len(register_read_array))
     print(register_read_array)
     input("Press any key to begin recording")
     print("recording data now")
     print("press CTRL + C to end program")
-
+    inc = 0
+    print(reg_corr)
     while Keep_Looping:
+        '''inc = inc + 1
+        if inc == 200:
+            print("entered")
+            client.SetRegister("10", "13", "-1")
+            client.WriteRegister("10","13")
+            client.Run("@ApplySettings")'''
+        
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
 
         current_time = time.strftime("%H:%M:%S")
@@ -437,6 +440,16 @@ def execute_macro(client,filename):
         current_date = time.strftime("%d/%m/%Y")
         dt = datetime.datetime.now()
         current_time_ms = str(dt.microsecond/1000)
+        
+        if reg_corr == "y":
+            
+            if register_read_comp_array != output_register_list:
+                #print("also entered")
+                client.Run("@SoftReset")
+                client.WriteRegister("10","255")
+                #time.sleep(2)
+                client.Run("@SingleWrite")
+                
         #print(Reg_0)
 
         dict_results = {}
@@ -451,6 +464,20 @@ def execute_macro(client,filename):
         first_run = False
                     
         csvf.WriteDictionary(dict_results) # Write data to data file
+
+def main():
+    run_number = enter_values("What is the run number?")
+    print(run_number)
+    reg_corr_flag = toggle_selection_TF("are you enabling register based correction?")
+    filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep +  "run_" + run_number + "_registers_ADAR4002_correction_"+ reg_corr_flag + ".csv"
+    print("output log is at the following location")
+    print(filename2)
+    print()
+    input("Please ensure that the device has been powered on through the tester and ACE is open then press <Enter>")
+    manager = ClientManager.Create()
+    client = manager.CreateRequestClient("localhost:2357")
+    execute_macro(client,filename2,reg_corr_flag)
+
 
 if __name__ == "__main__":
     main()
