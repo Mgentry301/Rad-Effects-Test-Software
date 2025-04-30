@@ -380,7 +380,7 @@ def main():
     filename2 = r'C:\Campaigns\LBNL_May_2025' + os.sep + "run_" + run_number + os.sep + "run_" + run_number + "_registers_ADAR3006_correction_" + reg_corr_flag + ".csv"
     print("output log is at the following location")
     print(filename2)
-
+    input("Please ensure that the device has been powered on through the tester and ACE is open then press <Enter>")
 
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")
@@ -405,9 +405,9 @@ def execute_macro(client,filename,reg_corr):
     # @Subsystem_1.ADAR3006 Board.ADAR3006: Evaluation.UI.MemoryMap.NavigateToChipAndMemoryMap();
     client.SetRegister("10", "255", "-1")
     client.Run("@ApplySettings")
-    client.ReadRegister("10")
+    #client.ReadRegister("10")
           
-    input("Please ensure that the device has been powered on through the tester and configured through ACE")
+    input("Please ensure that the device has been powered on through the tester and configured through ACE and then press <Enter>")
 
     # UI.SelectTab("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006");
     # UI.SelectTab("Root::System.Subsystem_1.ADAR3006 Board.ADAR3006.GeneralWriteRead");
@@ -425,37 +425,13 @@ def execute_macro(client,filename,reg_corr):
     # #csvf = CSV.Results_File( filename )
     csvf = Results_File( filename )
     
-    Reg_8   = 0
-    Reg_A   = -2
-    Reg_12  = 0
-    Reg_13  = 0
-    Reg_14  = 0
-    Reg_42  = 0
-    Reg_51  = 0
-    Reg_53  = 0
-    Reg_55  = 0
-    Reg_57  = 0
-    Reg_58  = 0
-    Reg_59  = 0
-    Reg_5A  = 0
-    Reg_5B  = 0
-    #Reg_5D  = 0
-    Reg_A0  = 0
-    Reg_AD  = 0
-    Reg_130 = 0
-    Reg_11D = 0
-    Reg_3BF = 0
-    Reg_3FF = 0
+
     
-    register_read_array_number = [0,1,10,18,19,20,32,33,48,49,50,51,52,53,54]
+    register_read_array_number = [0,1,10,18,19,20,32,48,49,50,51,52,53,54]
 
     register_read_array = [str(x) for x in register_read_array_number]
-    register_read_comp_array = register_loop(register_read_array_number)
+    register_read_comp_array = register_loop(client,register_read_array_number,len(register_read_array))
     print(register_read_array)
-    input("Press any key to begin recording")
-    print("recording data now")
-    print("press CTRL + C to end program")
-    
     input("Press Enter to begin recording")
     print("recording started")
     print("press CTRL + C to end program")
@@ -470,27 +446,6 @@ def execute_macro(client,filename,reg_corr):
         current_time_ms = str(dt.microsecond/1000)
         
 
-        
-        # Reg_8   = Reg_8.decode().strip('\r\n')
-        # Reg_A   = Reg_A.decode().strip('\r\n')
-        # Reg_12  = Reg_12.decode().strip('\r\n')
-        # Reg_13  = Reg_13.decode().strip('\r\n')
-        # Reg_14  = Reg_14.decode().strip('\r\n')
-        # Reg_42  = Reg_42.decode().strip('\r\n')
-        # Reg_51  = Reg_51.decode().strip('\r\n')
-        # Reg_53  = Reg_53.decode().strip('\r\n')
-        # Reg_55  = Reg_55.decode().strip('\r\n')
-        # Reg_57  = Reg_57.decode().strip('\r\n')
-        # Reg_58   = Reg_58.decode().strip('\r\n')
-        # Reg_59   = Reg_59.decode().strip('\r\n')
-        # Reg_5A   = Reg_5A.decode().strip('\r\n')
-        # Reg_5B   = Reg_5B.decode().strip('\r\n')
-        # Reg_A0   = Reg_A0.decode().strip('\r\n')
-        # Reg_AD   = Reg_AD.decode().strip('\r\n')
-        # Reg_130   = Reg_130.decode().strip('\r\n')
-        # Reg_11D   = Reg_11D.decode().strip('\r\n')
-        # Reg_3BF   = Reg_3BF.decode().strip('\r\n')
-        # Reg_3FF   = Reg_3FF.decode().strip('\r\n')
         if reg_corr == "y":
             
             if register_read_comp_array != output_register_list:
@@ -500,6 +455,9 @@ def execute_macro(client,filename,reg_corr):
                 client.Run("@SetupWrite")
                 client.Run("@PinOrSpiControl")
                 client.Run("@AllBeamUpdate")
+                client.Run("@Temp_Comp_Select")
+                client.Run("@Manual_Temp_Comp_Write")
+                client.Run("@Temp_Comp_Update")
         
         dict_results = {}
             
