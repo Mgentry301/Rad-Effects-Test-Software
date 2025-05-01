@@ -98,6 +98,7 @@
 			<Item Name="ReadTextFiles2ExcelCSV_Subvi.vi" Type="VI" URL="../Utility/ReadTextFiles2ExcelCSV_Subvi.vi"/>
 			<Item Name="StringArray2StringList.vi" Type="VI" URL="../Utility/StringArray2StringList.vi"/>
 			<Item Name="Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi" Type="VI" URL="../Utility/Convert_InstrumentReferenceArray_2_ChannelReferenceArray.vi"/>
+			<Item Name="StandAlone_CloseSessions.vi" Type="VI" URL="../Utility/StandAlone_CloseSessions.vi"/>
 		</Item>
 		<Item Name="IndependentVISApowerDataCollection.vi" Type="VI" URL="../IndependentVISApowerDataCollection.vi"/>
 		<Item Name="SEE_PXI_TopBench_Rev11.vi" Type="VI" URL="../SEE_PXI_TopBench_Rev11.vi"/>
@@ -105,6 +106,7 @@
 		<Item Name="StandAlone_TransientDataCollection.vi" Type="VI" URL="../StandAlone_TransientDataCollection.vi"/>
 		<Item Name="StandAlone_TransientDataRead.vi" Type="VI" URL="../StandAlone_TransientDataRead.vi"/>
 		<Item Name="TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi" Type="VI" URL="../../DataCollectionRev9/TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi"/>
+		<Item Name="StandAlone_TransientDataCollection_Overhaul.vi" Type="VI" URL="../StandAlone_TransientDataCollection_Overhaul.vi"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="instr.lib" Type="Folder">
 				<Item Name="niDCPower Abort With Channels.vi" Type="VI" URL="/&lt;instrlib&gt;/niDCPower/nidcpower.llb/niDCPower Abort With Channels.vi"/>
@@ -198,6 +200,8 @@
 				<Item Name="niScope trigger window mode.ctl" Type="VI" URL="/&lt;instrlib&gt;/niScope/Controls/niScope trigger window mode.ctl"/>
 				<Item Name="niScope tv event.ctl" Type="VI" URL="/&lt;instrlib&gt;/niScope/Controls/niScope tv event.ctl"/>
 				<Item Name="niScope vertical coupling.ctl" Type="VI" URL="/&lt;instrlib&gt;/niScope/Controls/niScope vertical coupling.ctl"/>
+				<Item Name="niDigital Get Session Reference.vi" Type="VI" URL="/&lt;instrlib&gt;/niDigital/niDigital.llb/niDigital Get Session Reference.vi"/>
+				<Item Name="niDigital Close.vi" Type="VI" URL="/&lt;instrlib&gt;/niDigital/niDigital.llb/niDigital Close.vi"/>
 			</Item>
 			<Item Name="vi.lib" Type="Folder">
 				<Item Name="BuildHelpPath.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/error.llb/BuildHelpPath.vi"/>
