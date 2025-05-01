@@ -349,10 +349,10 @@ class Results_File:
         return dict
     
     
-def register_loop(client2,register_array_addr,array_length):
+def register_loop(client,register_array_addr,array_length):
     outlist = ['0']*array_length
     for i in range(array_length):
-        outlist[i] = client2.ReadRegister(register_array_addr[i])
+        outlist[i] = client.ReadRegister(register_array_addr[i])
     return outlist
 
 
@@ -392,16 +392,16 @@ def execute_logic(client, logic_path,logic_name):
 
 
 def main():
-    prod_name = input("\nWhat is the product name?\n")
+    prod_name = "ADMV8818" #input("\nWhat is the product name?\n")
     prod_family = re.match(r"([a-zA-Z]*)(\d.*)", prod_name).group(1)
     config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
     config = load_product_config(config_file)
-    run_number = enter_values("What is the run number?")
+    run_number = 1 #enter_values("What is the run number?")
     print(run_number)
     filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
     print("output log is at the following location")
     print(filename)
-    input("Please ensure that ACE is open")
+    input(f"Please ensure that ACE is open to the {config['product_name']} page and press enter to continue")
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")    
     execute_macro(client, filename, config)
@@ -424,7 +424,7 @@ def execute_macro(client,filename,config):
     
     print("\n" + "recording data now")
     print("press CTRL + C to end program")
-    
+
     while Keep_Looping:
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
         current_time = time.strftime("%H:%M:%S")
@@ -437,12 +437,11 @@ def execute_macro(client,filename,config):
         dict_results["Date"] = current_date
         dict_results["Time"] = current_time
         dict_results["Time_ms"] = current_time_ms
+        dict_results["Reset_Flag"] = "False"
         
         if first_run:
             csvf.AutoCreateHeader(dict_results) # Creates header in data file
-        first_run = False
-                    
-        csvf.WriteDictionary(dict_results) # Write data to data file
+        first_run = False                
 
         #if we detect a reset/bit flip, need to re write this register
         for reg in config['expected_register_values']:
@@ -450,8 +449,11 @@ def execute_macro(client,filename,config):
                 print('reset needed')
                 decimal = int(config['expected_register_values'][reg], 16)
                 register = reg.split("x")[-1]
-                client.WriteRegister(register,str(decimal))
-                print("wrote register " + reg + " with value " + config['expected_register_values'][reg])    
+                client.WriteRegister(str(int(register,16)),str(decimal))
+                print("wrote register " + reg + " with value " + config['expected_register_values'][reg])
+                dict_results['Reset_Needed']="True"   
+
+        csvf.WriteDictionary(dict_results) # Write data to data file 
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 {
     "product_name": "ADMV8818",
-    "register_read_array": [22],
+    "register_read_array": [0,1,16,17,18,19,20,32,33,34,35],
     "performance_check": "Do you see a tone on your output (12.25GHz)?",
     "campaign": "TAMU_May_2025",
     "expected_register_values": {
-        "Reg_0x22": "001C"
+        "Reg_0x22": "00DC"
     },
     "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADMV",
     "logic_name": "ADMV8818_logic.logic",
