@@ -375,10 +375,11 @@ def load_product_config(file_path):
     with open(file_path, 'r') as f:
         return json.load(f)
     
-def execute_logic(client, logic_path,logic_name):
+def execute_logic(client, prod_name, prod_family):
     initial_path = sys.path.copy()  # Save the original sys.path
-    module_dir = logic_path
-    module_name, function_name = logic_name.rsplit('.', 1)
+    module_dir = rf"C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\{prod_family}"
+    module_name = f"{prod_name}_logic"
+    function_name = "logic"
 
     # Add the module's directory to sys.path
     if module_dir not in sys.path:
@@ -390,25 +391,8 @@ def execute_logic(client, logic_path,logic_name):
     logic_function(client)
     sys.path = initial_path  # Reset sys.path to its original state
 
-
-def main():
-    prod_name = "ADMV8818" #input("\nWhat is the product name?\n")
-    prod_family = re.match(r"([a-zA-Z]*)(\d.*)", prod_name).group(1)
-    config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
-    config = load_product_config(config_file)
-    run_number = 1 #enter_values("What is the run number?")
-    print(run_number)
-    filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
-    print("output log is at the following location")
-    print(filename)
-    input(f"Please ensure that ACE is open to the {config['product_name']} page and press enter to continue")
-    manager = ClientManager.Create()
-    client = manager.CreateRequestClient("localhost:2357")    
-    execute_macro(client, filename, config)
-
-
 def execute_macro(client,filename,config):
-    execute_logic(client,config['logic_path'],config['logic_name'])
+    execute_logic(client,config['product_name'])
 
     input(config['performance_check'])
 
@@ -443,17 +427,34 @@ def execute_macro(client,filename,config):
             csvf.AutoCreateHeader(dict_results) # Creates header in data file
         first_run = False                
 
-        #if we detect a reset/bit flip, need to re write this register
-        for reg in config['expected_register_values']:
-            if dict_results[reg].upper() != config['expected_register_values'][reg]:
-                print('reset needed')
-                decimal = int(config['expected_register_values'][reg], 16)
-                register = reg.split("x")[-1]
-                client.WriteRegister(str(int(register,16)),str(decimal))
-                print("wrote register " + reg + " with value " + config['expected_register_values'][reg])
-                dict_results['Reset_Needed']="True"   
+        #if we detect a reset/bit flip, need to re write these registers
+        if len(config['expected_register_values'])>0:
+            for reg in config['expected_register_values']:
+                if dict_results[reg].upper() != config['expected_register_values'][reg]:
+                    print('reset needed')
+                    decimal = int(config['expected_register_values'][reg], 16)
+                    register = reg.split("x")[-1]
+                    client.WriteRegister(str(int(register,16)),str(decimal))
+                    print("wrote register " + reg + " with value " + config['expected_register_values'][reg])
+                    dict_results['Reset_Needed']="True"   
 
         csvf.WriteDictionary(dict_results) # Write data to data file 
+
+
+def main():
+    prod_name = input("\nWhat is the product name?\n")
+    prod_family = re.match(r"([a-zA-Z]*)(\d.*)", prod_name).group(1)
+    config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
+    config = load_product_config(config_file)
+    run_number = enter_values("What is the run number?")
+    print(run_number)
+    filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
+    print("output log is at the following location")
+    print(filename)
+    input(f"Please ensure that ACE is open to the {config['product_name']} page and press enter to continue")
+    manager = ClientManager.Create()
+    client = manager.CreateRequestClient("localhost:2357")    
+    execute_macro(client, filename, config)
 
 
 if __name__ == "__main__":
