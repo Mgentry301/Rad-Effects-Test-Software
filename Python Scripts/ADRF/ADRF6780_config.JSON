@@ -10,12 +10,12 @@
     "logic_name": "ADRF6780_logic.logic",
 
     "power_supplies": {
-        "Slot_4": {
-            "name": "Red 5v",            
+        "Slot_4": {          
             "card_number": 4139,
             "voltage": 5,
+			"name": "Red 5v",
             "current_limit": 3,
-            "measure_reccord_length": 1e6,
+            "measure_record_length": 1e6,
             "aperature_time": 1e-3
         },
         "Slot_5": {
@@ -23,7 +23,7 @@
             "voltage": 3.3,
             "name": "Orange 3.3v_6780",
             "current_limit": 3,
-            "measure_reccord_length": 1e6,
+            "measure_record_length": 1e6,
             "aperature_time": 1e-3
         },
         "Slot_6": {
@@ -31,7 +31,7 @@
             "voltage": 1.8,
             "name": "Yellow 1.8v", 
             "current_limit": 3,
-            "measure_reccord_length": 1e6,
+            "measure_record_length": 1e6,
             "aperature_time": 1e-3
         },
         "Ch_0": {
@@ -39,7 +39,7 @@
             "voltage": 3.3,
             "name": "Green 3.3v", 
             "current_limit": 3,
-            "measure_reccord_length": 1e6,
+            "measure_record_length": 1e6,
             "aperature_time": 1e-3
         },      
         "Ch_1": {
@@ -47,7 +47,7 @@
             "voltage": 2.6,
             "name": "Blue 2.6v VATT", 
             "current_limit": 3,
-            "measure_reccord_length": 1e6,
+            "measure_record_length": 1e6,
             "aperature_time": 1e-3
         }        
 
