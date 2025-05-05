@@ -8,63 +8,14 @@
     },
     "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADRF",
     "logic_name": "ADRF6780_logic.logic",
-
+ 
     "power_supplies": {
-        "Slot_4": {          
-            "card_number": 4139,
-            "voltage": 5,
-			"name": "Red 5v",
-            "current_limit": 3,
-            "measure_record_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_5": {
-            "card_number": 4139,
-            "voltage": 3.3,
-            "name": "Orange 3.3v_6780",
-            "current_limit": 3,
-            "measure_record_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_6": {
-            "card_number": 4139,
-            "voltage": 1.8,
-            "name": "Yellow 1.8v", 
-            "current_limit": 3,
-            "measure_record_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Ch_0": {
-            "card_number": 4163,
-            "voltage": 3.3,
-            "name": "Green 3.3v", 
-            "current_limit": 3,
-            "measure_record_length": 1e6,
-            "aperature_time": 1e-3
-        },      
-        "Ch_1": {
-            "card_number": 4163,
-            "voltage": 2.6,
-            "name": "Blue 2.6v VATT", 
-            "current_limit": 3,
-            "measure_record_length": 1e6,
-            "aperature_time": 1e-3
-        }        
-
-    },
+		"Supply_Number": 5,
+		"Supply_Array": [{"slot_name": "Slot_4_PXIe4139","channel": "0","voltage": 5,"name":"Red 5v","current_limit": 3,"measure_record_length": 1e6,"aperature_time": 1e-3},{"slot_name": "Slot_5_PXIe4139","channel": "0","voltage": 3.3,"name":"Orange 3.3v_6780","current_limit": 3,"measure_record_length": 1e6,"aperature_time": 1e-3},{"slot_name": "Slot_6_PXIe4139","channel": "0","voltage": 1.8,"name":"Yellow 1.8v","current_limit": 3,"measure_record_length": 1e6,"aperature_time": 1e-3},{"slot_name": "PXIe4163","channel": "0","voltage": 3.3,"name":"Green 3.3v","current_limit": 3,"measure_record_length": 1e6,"aperature_time": 1e-3},{"slot_name": "PXIe4163","channel": "1","voltage": 2.6,"name":"Blue 2.6v VATT","current_limit": 3,"measure_record_length": 1e6,"aperature_time": 1e-3}]
+	},
     "signal_generators":{
-        "Gen_1": {
-            "frequency": 8e9,
-            "power": 0,
-            "name": "LO",
-            "GPIB_address": 12
-        },
-        "Gen_2": {
-            "frequency": 2e9,
-            "power": -10,
-            "name": "IF",
-            "GPIB_address": 27
-        }   
+		"Gen_Number": 2,
+		"Gen_Array": [{"GPIB_address": 12,"name":"LO","frequency":8e9,"power":0},{"GPIB_address": 27,"name":"IF","frequency":2e9,"power":-10}]
     }
-
 }
+
