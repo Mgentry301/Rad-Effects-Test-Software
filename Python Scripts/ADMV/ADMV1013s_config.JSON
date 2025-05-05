@@ -10,45 +10,53 @@
     "logic_name": "ADMV1013s_logic.logic",
 
     "power_supplies": {
-        "Slot_4": {
-            "name": "Red 5v",            
-            "card_number": 4139,
-            "voltage": 5,
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_5": {
-            "card_number": 4139,
-            "voltage": 3.3,
-            "name": "Orange 3.3v",
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_6": {
-            "card_number": 4139,
-            "voltage": 1.8,
-            "name": "Yellow 1.8v", 
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        }
+		"Supply_Number": 5,
+		"Supply_Array": [
+            {
+                "instr_name": "Slot_4_PXIe4139",
+                "channel": "0",
+                "supply_name":"Red 5v",
+                "voltage": 5,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_5_PXIe4139",
+                "channel": "0",
+                "supply_name":"Orange 3.3v",
+                "voltage": 3.3,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_6_PXIe4139",
+                "channel": "0",
+                "supply_name":"Yellow 1.8v",
+                "voltage": 1.8,
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            }
+        ]
+	},
 
-    },
     "signal_generators":{
-        "Gen_1": {
-            "frequency": 7e9,
-            "power": 10,
-            "name": "LO",
-            "GPIB_address": 12
-        },
-        "Gen_2": {
-            "frequency": 6.5e9,
-            "power": 0,
-            "name": "IF",
-            "GPIB_address": 27
-        }   
+		"Gen_Number": 2,
+		"Gen_Array": [
+            {
+                "GPIB_address": 12,
+                "signal_name":"LO",
+                "frequency":7e9,
+                "power":10
+            },
+            {
+                "GPIB_address": 27,
+                "signal_name":"IF",
+                "frequency":6.5e9,
+                "power":0
+            }
+        ]
     }
-
 }

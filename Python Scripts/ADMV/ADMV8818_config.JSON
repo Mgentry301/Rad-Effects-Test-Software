@@ -10,40 +10,47 @@
     "logic_name": "ADMV8818_logic.logic",
 
     "power_supplies": {
-        "Slot_4": {
-            "name": "Red 3.3v",            
-            "card_number": 4139,
-            "voltage": 3.3,
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_5": {
-            "card_number": 4139,
-            "voltage": 2.5,
-            "name": "Orange 2.5v",
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        },
-        "Slot_6": {
-            "card_number": 4139,
-            "voltage": -2.5,
-            "name": "Yellow -2.5v", 
-            "current_limit": 3,
-            "measure_reccord_length": 1e6,
-            "aperature_time": 1e-3
-        }      
+		"Supply_Number": 5,
+		"Supply_Array": [
+            {
+                "instr_name": "Slot_4_PXIe4139",
+                "channel": "0",
+                "supply_name":"Red 3.3v",
+                "voltage": 3.3,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_5_PXIe4139",
+                "channel": "0",
+                "supply_name":"Orange 2.5v",
+                "voltage": 2.5,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_6_PXIe4139",
+                "channel": "0",
+                "supply_name":"Yellow -2.5v",
+                "voltage": -2.5,
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            }
+        ]
+	},
 
-    },
     "signal_generators":{
-        "Gen_1": {
-            "frequency": 8e9,
-            "power": 0,
-            "name": "RF_IN",
-            "GPIB_address": 12
-        }
- 
+		"Gen_Number": 2,
+		"Gen_Array": [
+            {
+                "GPIB_address": 12,
+                "signal_name":"RF_IN",
+                "frequency":8e9,
+                "power":0
+            }
+        ]
     }
-
 }
