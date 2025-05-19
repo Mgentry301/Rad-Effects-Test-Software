@@ -1,0 +1,58 @@
+{
+    "product_name": "AD4080",
+    "campaign": "TAMU_May_2025",
+
+    "power_supplies": {
+		"Supply_Number": 4,
+		"Supply_Array": [
+            {
+                "instr_name": "Slot_4_PXIe4139",
+                "channel": "0",
+                "supply_name":"Red 3.3v VDD",
+                "voltage": 3.3,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_5_PXIe4139",
+                "channel": "0",
+                "supply_name":"Orange 1.5v VIO",
+                "voltage": 1.5,                
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_6_PXIe4139",
+                "channel": "0",
+                "supply_name":"Yellow 1.1v VDDLDO",
+                "voltage": 1.1,
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            },
+            {
+                "instr_name": "Slot_3_PXIe4163",
+                "channel": "0",
+                "supply_name":"Green 1.1v VDD",
+                "voltage": 1.1,
+                "current_limit": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+            }
+        ]
+	},
+
+    "signal_generators":{
+		"Gen_Number": 1,
+		"Gen_Array": [
+            {
+                "GPIB_address": 12,
+                "signal_name":"RF_IN",
+                "frequency":1e6,
+                "power":0
+            }
+        ]
+    }
+}
