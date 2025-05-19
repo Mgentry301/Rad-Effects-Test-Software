@@ -52,7 +52,7 @@
                 "instr_name": "PXIe4163",
                 "channel": "1",
                 "supply_name":"Blue 2.6v VATT",
-                "voltage": 2.6,                
+                "voltage": 1,                
                 "current_limit": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
