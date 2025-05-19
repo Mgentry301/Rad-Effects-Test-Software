@@ -10,7 +10,7 @@
     "logic_name": "ADMV8818_logic.logic",
 
     "power_supplies": {
-		"Supply_Number": 5,
+		"Supply_Number": 3,
 		"Supply_Array": [
             {
                 "instr_name": "Slot_4_PXIe4139",
