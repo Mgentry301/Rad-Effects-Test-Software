@@ -129,6 +129,7 @@
 		<Item Name="VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi" Type="VI" URL="../PowerSubVI/VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi"/>
 		<Item Name="EXPERIMENTAL_OSCILLOSCOPE_READING.vi" Type="VI" URL="../EXPERIMENTAL_OSCILLOSCOPE_READING.vi"/>
 		<Item Name="ReadOscilloscopeDataFile.vi" Type="VI" URL="../DataCollectionSubVI/ReadOscilloscopeDataFile.vi"/>
+		<Item Name="DCPowerBlock_byInstrument_Control.ctl" Type="VI" URL="../Controls/DCPowerBlock_byInstrument_Control.ctl"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="instr.lib" Type="Folder">
 				<Item Name="niDCPower Abort With Channels.vi" Type="VI" URL="/&lt;instrlib&gt;/niDCPower/nidcpower.llb/niDCPower Abort With Channels.vi"/>
