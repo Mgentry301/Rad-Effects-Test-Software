@@ -17,45 +17,50 @@
                 "channel": "0",
                 "supply_name":"Red 5v",
                 "voltage": 5,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "Slot_5_PXIe4139",
                 "channel": "0",
                 "supply_name":"Orange 3.3v_6780",
                 "voltage": 3.3,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "Slot_6_PXIe4139",
                 "channel": "0",
                 "supply_name":"Yellow 1.8v",
                 "voltage": 1.8,
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "PXIe4163",
                 "channel": "0",
                 "supply_name":"Green 3.3v",
                 "voltage": 3.3,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "PXIe4163",
                 "channel": "1",
                 "supply_name":"Blue 2.6v VATT",
                 "voltage": 1,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             }
         ]
 	},
