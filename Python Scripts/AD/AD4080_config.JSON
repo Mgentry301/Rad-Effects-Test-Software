@@ -10,18 +10,20 @@
                 "channel": "0",
                 "supply_name":"Red 3.3v VDD",
                 "voltage": 3.3,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "Slot_5_PXIe4139",
                 "channel": "0",
                 "supply_name":"Orange 1.5v VIO",
                 "voltage": 1.5,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "Slot_6_PXIe4139",
@@ -31,6 +33,7 @@
                 "current_limit": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             },
             {
                 "instr_name": "Slot_3_PXIe4163",
@@ -40,6 +43,7 @@
                 "current_limit": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100
             }
         ]
 	},
@@ -55,4 +59,12 @@
             }
         ]
     }
+	"visa_power_supplies":{
+		"VISA_Supply_Number":0,
+		"VISA_Supply_Array": [
+			{
+
+			}
+		]		
+	}
 }
