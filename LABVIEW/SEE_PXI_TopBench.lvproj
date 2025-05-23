@@ -23,6 +23,7 @@
 			<Item Name="DCPowerBlock_byChannel_Control.ctl" Type="VI" URL="../Controls/DCPowerBlock_byChannel_Control.ctl"/>
 			<Item Name="OscilloscopeBlockControl2.ctl" Type="VI" URL="../Controls/OscilloscopeBlockControl2.ctl"/>
 			<Item Name="VISA_power_Control.ctl" Type="VI" URL="../Controls/VISA_power_Control.ctl"/>
+			<Item Name="DCPowerBlock_byInstrument_Control.ctl" Type="VI" URL="../Controls/DCPowerBlock_byInstrument_Control.ctl"/>
 		</Item>
 		<Item Name="DataCollectionSubVI" Type="Folder">
 			<Property Name="NI.SortType" Type="Int">3</Property>
@@ -89,6 +90,10 @@
 			<Item Name="DCPower_VoltageConfiguration.vi" Type="VI" URL="../PowerSubVI/DCPower_VoltageConfiguration.vi"/>
 			<Item Name="VISA_Keithley2230G_ConfigureInstrument_V1.vi" Type="VI" URL="../PowerSubVI/VISA_Keithley2230G_ConfigureInstrument_V1.vi"/>
 			<Item Name="DCPower_RECONFIGURE_VoltageOrChannelname_AfterJSONfile_REFERENCE_byChannel.vi" Type="VI" URL="../PowerSubVI/DCPower_RECONFIGURE_VoltageOrChannelname_AfterJSONfile_REFERENCE_byChannel.vi"/>
+			<Item Name="DCPower_TurnOff_byIndividualChannel_KeepReference.vi" Type="VI" URL="../PowerSubVI/DCPower_TurnOff_byIndividualChannel_KeepReference.vi"/>
+			<Item Name="DCPower_Reconfig_byChannel.vi" Type="VI" URL="../PowerSubVI/DCPower_Reconfig_byChannel.vi"/>
+			<Item Name="DCPower_Reconfig_byInstrument_perChannel.vi" Type="VI" URL="../PowerSubVI/DCPower_Reconfig_byInstrument_perChannel.vi"/>
+			<Item Name="VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi" Type="VI" URL="../PowerSubVI/VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi"/>
 		</Item>
 		<Item Name="RFConfigSubVI" Type="Folder">
 			<Item Name="RFConfig_SubVI_HMCT22##_PowerOnOff.vi" Type="VI" URL="../RFConfigSubVI/RFConfig_SubVI_HMCT22##_PowerOnOff.vi"/>
@@ -112,6 +117,8 @@
 			<Item Name="StandAlone_CloseSessions.vi" Type="VI" URL="../Utility/StandAlone_CloseSessions.vi"/>
 			<Item Name="StringList2StringArray.vi" Type="VI" URL="../Utility/StringList2StringArray.vi"/>
 			<Item Name="Closing_Sessions.vi" Type="VI" URL="../Utility/Closing_Sessions.vi"/>
+			<Item Name="EXPERIMENTAL_OSCILLOSCOPE_READING.vi" Type="VI" URL="../EXPERIMENTAL_OSCILLOSCOPE_READING.vi"/>
+			<Item Name="EXPERIMENTAL_CAPTURE_LATCHING.vi" Type="VI" URL="../Utility/EXPERIMENTAL_CAPTURE_LATCHING.vi"/>
 		</Item>
 		<Item Name="DataConfigSubVI" Type="Folder">
 			<Item Name="JSONconfig_RFSource.vi" Type="VI" URL="../DataConfigSubVI/JSONconfig_RFSource.vi"/>
@@ -126,8 +133,6 @@
 		<Item Name="StandAlone_TransientDataRead.vi" Type="VI" URL="../StandAlone_TransientDataRead.vi"/>
 		<Item Name="TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi" Type="VI" URL="../../DataCollectionRev9/TEST_DCPOWER_READING_MULTI-INSTRUMENT_V7.vi"/>
 		<Item Name="StandAlone_TransientDataCollection_Overhaul.vi" Type="VI" URL="../StandAlone_TransientDataCollection_Overhaul.vi"/>
-		<Item Name="VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi" Type="VI" URL="../PowerSubVI/VISA_Dynamic_Keithley2230_PSU_Configuration_JSON.vi"/>
-		<Item Name="EXPERIMENTAL_OSCILLOSCOPE_READING.vi" Type="VI" URL="../EXPERIMENTAL_OSCILLOSCOPE_READING.vi"/>
 		<Item Name="ReadOscilloscopeDataFile.vi" Type="VI" URL="../DataCollectionSubVI/ReadOscilloscopeDataFile.vi"/>
 		<Item Name="Dependencies" Type="Dependencies">
 			<Item Name="instr.lib" Type="Folder">
@@ -275,13 +280,12 @@
 				<Item Name="Write Delimited Spreadsheet.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/file.llb/Write Delimited Spreadsheet.vi"/>
 				<Item Name="Write Spreadsheet String.vi" Type="VI" URL="/&lt;vilib&gt;/Utility/file.llb/Write Spreadsheet String.vi"/>
 				<Item Name="Space Constant.vi" Type="VI" URL="/&lt;vilib&gt;/dlg_ctls.llb/Space Constant.vi"/>
+				<Item Name="sub_Random U32.vi" Type="VI" URL="/&lt;vilib&gt;/numeric/sub_Random U32.vi"/>
+				<Item Name="Random Number (Range) U64.vi" Type="VI" URL="/&lt;vilib&gt;/numeric/Random Number (Range) U64.vi"/>
+				<Item Name="Random Number (Range) I64.vi" Type="VI" URL="/&lt;vilib&gt;/numeric/Random Number (Range) I64.vi"/>
+				<Item Name="Random Number (Range) DBL.vi" Type="VI" URL="/&lt;vilib&gt;/numeric/Random Number (Range) DBL.vi"/>
+				<Item Name="Random Number (Range).vi" Type="VI" URL="/&lt;vilib&gt;/numeric/Random Number (Range).vi"/>
 			</Item>
-			<Item Name="Bitfield and Data.ctl" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Bitfield and Data.ctl"/>
-			<Item Name="Digital - Cleanup.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Cleanup.vi"/>
-			<Item Name="Digital - Initialize.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Initialize.vi"/>
-			<Item Name="Digital - KBTR - Determine Bitfield Data to Write.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - KBTR - Determine Bitfield Data to Write.vi"/>
-			<Item Name="Digital - Read Configuration Register.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Read Configuration Register.vi"/>
-			<Item Name="Digital - Write Current Beam.vi" Type="VI" URL="/Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Write Current Beam.vi"/>
 			<Item Name="InitialFileFolderCreation_V2.vi" Type="VI" URL="../DataCollectionSubVI/InitialFileFolderCreation_V2.vi"/>
 			<Item Name="Initialize_VISA_PowerSupplies_Keithley2230G_V1.vi" Type="VI" URL="../PowerConfig/Initialize_VISA_PowerSupplies_Keithley2230G_V1.vi"/>
 			<Item Name="lvanlys.dll" Type="Document" URL="/&lt;resource&gt;/lvanlys.dll"/>
@@ -299,6 +303,12 @@
 			</Item>
 			<Item Name="DCPower_TurnOff_KeepReference.vi" Type="VI" URL="../PowerSubVI/DCPower_TurnOff_KeepReference.vi"/>
 			<Item Name="AUTO_V_MANUAL_CONFIGURATION.vi" Type="VI" URL="../DataConfigSubVI/AUTO_V_MANUAL_CONFIGURATION.vi"/>
+			<Item Name="Bitfield and Data.ctl" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Bitfield and Data.ctl"/>
+			<Item Name="Digital - KBTR - Determine Bitfield Data to Write.vi" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - KBTR - Determine Bitfield Data to Write.vi"/>
+			<Item Name="Digital - Write Current Beam.vi" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Write Current Beam.vi"/>
+			<Item Name="Digital - Initialize.vi" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Initialize.vi"/>
+			<Item Name="Digital - Read Configuration Register.vi" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Read Configuration Register.vi"/>
+			<Item Name="Digital - Cleanup.vi" Type="VI" URL="../../../../../Users/Aerolab1/Documents/LabVIEW Data/2019(64-bit)/Projects/TAMU2024/Scripts/KBTR/Independent Digital Control/Digital - Cleanup.vi"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
 	</Item>

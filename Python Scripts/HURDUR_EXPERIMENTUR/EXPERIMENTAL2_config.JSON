@@ -17,45 +17,55 @@
                 "channel": "0",
                 "supply_name":"Red 5v",
                 "voltage": 5,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
             },
             {
                 "instr_name": "Slot_5_PXIe4139",
                 "channel": "0",
                 "supply_name":"Orange 3.3v_6780",
                 "voltage": 3.3,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
             },
             {
                 "instr_name": "Slot_6_PXIe4139",
                 "channel": "0",
                 "supply_name":"Yellow 1.8v",
                 "voltage": 1.8,
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
             },
             {
                 "instr_name": "PXIe4163",
                 "channel": "0",
                 "supply_name":"Green 3.3v",
                 "voltage": 3.3,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
             },
             {
                 "instr_name": "PXIe4163",
                 "channel": "1",
                 "supply_name":"Blue 2.6v VATT",
                 "voltage": 1,                
-                "current_limit": 3,
+                "current_clamp": 3,
                 "measure_record_length": 1e6,
                 "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
             }
         ]
 	},
@@ -89,6 +99,21 @@
 				"channel_names": ["channel1","channel2","channel3"]
 			}
 		]		
+	}
+	"oscilloscope":{
+		"Oscilloscope_Number":1
+		"Oscilloscope_Array":[
+			{
+				"oscope_instr_name":"PXIe5172",
+				"channel_names_list":["TEST0","TEST1","TEST2","TEST3","TEST4","TEST5","TEST6","TEST7"],
+				"vert_range": 30,
+				"coupling":"DC",
+				"fifty_ohm_channel": true,
+				"fifty_ohm_vert_range": 10,
+				"min_record_length": 1000000,
+				"min_sample_rate":500000
+			}
+		]
 	}
 }
 
