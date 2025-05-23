@@ -77,7 +77,11 @@
                 "power":-10
             }
         ]
-    }
+    },
+	visa_power_supplies:{
+		"VISA_Supply_Number":0,
+		"VISA_Supply_Array":[]
+	}
 }
 
  
