@@ -391,8 +391,8 @@ def execute_logic(client, prod_name, prod_family):
     logic_function(client)
     sys.path = initial_path  # Reset sys.path to its original state
 
-def execute_macro(client,filename,config):
-    execute_logic(client,config['product_name'])
+def execute_macro(client,filename,config, prod_family):
+    execute_logic(client,config['product_name'],prod_family)
 
     input(config['performance_check'])
 
@@ -444,8 +444,9 @@ def execute_macro(client,filename,config):
 def main():
     prod_name = input("\nWhat is the product name?\n")
     prod_family = re.match(r"([a-zA-Z]*)(\d.*)", prod_name).group(1)
-    config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.json'
+    config_file = rf'c:\Git\Rad-Effects-Test-Software\Python Scripts\{prod_family}\{prod_name}_config.JSON'
     config = load_product_config(config_file)
+
     run_number = enter_values("What is the run number?")
     print(run_number)
     filename = rf'C:\Campaigns\{config["campaign"]}{os.sep}\run_{run_number}{os.sep}run_{run_number}_registers_{config["product_name"]}.csv'
@@ -454,7 +455,7 @@ def main():
     input(f"Please ensure that ACE is open to the {config['product_name']} page and press enter to continue")
     manager = ClientManager.Create()
     client = manager.CreateRequestClient("localhost:2357")    
-    execute_macro(client, filename, config)
+    execute_macro(client, filename, config, prod_family)
 
 
 if __name__ == "__main__":

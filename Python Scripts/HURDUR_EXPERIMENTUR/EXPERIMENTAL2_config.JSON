@@ -1,0 +1,120 @@
+{
+    "product_name": "ADRF6780",
+    "register_read_array": [0, 3, 4, 5, 6, 12],
+    "performance_check": "Do you see a tone on your output (10GHz)?",
+    "campaign": "TAMU_May_2025",
+    "expected_register_values": {
+        "Reg_0x3": "0167"
+    },
+    "logic_path": "C:\\Git\\Rad-Effects-Test-Software\\Python Scripts\\ADRF",
+    "logic_name": "ADRF6780_logic.logic",
+
+    "power_supplies": {
+		"Supply_Number": 5,
+		"Supply_Array": [
+            {
+                "instr_name": "Slot_4_PXIe4139",
+                "channel": "0",
+                "supply_name":"Red 5v",
+                "voltage": 5,                
+                "current_clamp": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
+            },
+            {
+                "instr_name": "Slot_5_PXIe4139",
+                "channel": "0",
+                "supply_name":"Orange 3.3v_6780",
+                "voltage": 3.3,                
+                "current_clamp": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
+            },
+            {
+                "instr_name": "Slot_6_PXIe4139",
+                "channel": "0",
+                "supply_name":"Yellow 1.8v",
+                "voltage": 1.8,
+                "current_clamp": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
+            },
+            {
+                "instr_name": "PXIe4163",
+                "channel": "0",
+                "supply_name":"Green 3.3v",
+                "voltage": 3.3,                
+                "current_clamp": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
+            },
+            {
+                "instr_name": "PXIe4163",
+                "channel": "1",
+                "supply_name":"Blue 2.6v VATT",
+                "voltage": 1,                
+                "current_clamp": 3,
+                "measure_record_length": 1e6,
+                "aperature_time": 1e-3
+				"current_reset_value_A":100,
+				"mitigation_select": false 
+            }
+        ]
+	},
+
+    "signal_generators":{
+		"Gen_Number": 2,
+		"Gen_Array": [
+            {
+                "GPIB_address": 12,
+                "signal_name":"LO",
+                "frequency":8e9,
+                "power":0
+            },
+            {
+                "GPIB_address": 27,
+                "signal_name":"IF",
+                "frequency":2e9,
+                "power":-10
+            }
+        ]
+    },
+	"visa_power_supplies":{
+		"VISA_Supply_Number":1,
+		"VISA_Supply_Array": [
+			{
+				"VISA_GPIB_address":3,
+				"combination_OFF_SER_PAR": "OFF",
+				"paralleled_channels_NA_ALL_I1+I2_I2+I3": "NA",
+				"voltage_array_CH_1_2_3": [6,5,4],
+				"current_array_CH_1_2_3": [3,2,1],
+				"channel_names": ["channel1","channel2","channel3"]
+			}
+		]		
+	}
+	"oscilloscope":{
+		"Oscilloscope_Number":1
+		"Oscilloscope_Array":[
+			{
+				"oscope_instr_name":"PXIe5172",
+				"channel_names_list":["TEST0","TEST1","TEST2","TEST3","TEST4","TEST5","TEST6","TEST7"],
+				"vert_range": 30,
+				"coupling":"DC",
+				"fifty_ohm_channel": true,
+				"fifty_ohm_vert_range": 10,
+				"min_record_length": 1000000,
+				"min_sample_rate":500000
+			}
+		]
+	}
+}
+
+ 

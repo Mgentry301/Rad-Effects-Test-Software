@@ -429,6 +429,7 @@ def execute_macro(client,filename):
 
     #register_read_array_number = [0,4,5,10,19,64,65,67,81,82,83,84,95,160]
     #[0,1,A,10,11,1f,29,2a,2b,2e,3f,40,58,5b]
+    register_read_array_number = [0,1,10,16,17,31,41,42,43,46,63,64,88,91]
     register_read_array = [str(x) for x in register_read_array_number]
     print(register_read_array)
     input("Press any key to begin recording")
