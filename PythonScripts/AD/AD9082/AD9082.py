@@ -6,6 +6,7 @@ from datetime import datetime
 from threading import Lock
 import concurrent.futures
 from PythonScripts.radbench import Keithley2230 as keithley
+from PythonScripts.radbench import RohdeSchwarzSMA as sma
 from PythonScripts.FieldFox.MaxCapture import capture_spectrum_worker
 from PythonScripts.AD.AD9082.API.ad9082_python_eval_app import txfe_main
 
@@ -92,6 +93,45 @@ class supplies:
         for result in results:
             data.extend(result)
         return data
+    
+class SignalGenerators:
+    generator_list = []
+
+    def __init__(self):
+        dac_clk = sma('GPIB0::28::INSTR')    
+        fpga_clk = sma('GPIB0::30::INSTR')
+        rf_in = sma('GPIB0::27::INSTR')
+        self.generator_list = [dac_clk, fpga_clk, rf_in]  
+        
+    def configure_generators(self):
+        #dac_clk: 5.89824 GHz, 5 dBm
+        self.generator_list[0].set_frequency(5.89824e9)
+        self.generator_list[0].set_power(5)
+        self.generator_list[0].on()
+
+        #fpga_clk: 368.64 MHz, 8 dBm
+        self.generator_list[1].set_frequency(368.64e6)
+        self.generator_list[1].set_power(8)
+        self.generator_list[1].on()
+
+        #rf_in: 200 MHz, 6 dBm
+        self.generator_list[2].set_frequency(200e6)
+        self.generator_list[2].set_power(6)
+        self.generator_list[2].on()
+    
+    def disable_generators(self):
+        """
+        Turn off all supplies.
+        """
+        for gen in self.generator_list:
+            gen.off()
+
+    def enable_generators(self):
+        for gen in self.generator_list:
+            gen.on()
+         
+
+
 
 def supply_reader_thread(supplies, stop_event):
     global latest_supply_data
@@ -196,7 +236,7 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
             if len(buffer) >= buffer_size:
                 for item in buffer:
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-                    if len(item)==24: #supply data
+                    if len(item)<=24: #supply data
                         supply_sheet.cell(row=supply_row, column=1, value=timestamp)  # Timestamp in col 1
                         for col_idx, value in enumerate(item, start=2):  # Write data vertically
                             supply_sheet.cell(row=supply_row, column=col_idx, value=value)
@@ -242,9 +282,13 @@ if __name__ == '__main__':
     run_type = input("Enter the run type (1 for SEL, anything else for SEU): ")
     print("powering up ad9082 & configring system")
 
-    # Configure supplies before starting threads
+    # Configure supplies
     supplies = supplies()
     supplies.configure_supplies()
+
+    #configure signal generators
+    generators = SignalGenerators()
+    generators.configure_generators()
 
     # Configure and initialize AD9082
     ads9, ad9082, uc, args = txfe_main.init()
@@ -280,9 +324,19 @@ if __name__ == '__main__':
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        x = 0
-        while x != -1:
-            x = input('Enter 1 to reconfigure the AD9082, 2 to Power Cycle and reconfigure, -1 to power down: ')
+        end_instr = '1'
+        while end_instr != '':
+            end_instr = input('Enter 1 to reconfigure the AD9082, 2 to Power Cycle and reconfigure, anything else to just stop: ')
+            if end_instr == '1':
+                print("Reconfiguring AD9082...")
+                ads9, ad9082, uc, args = txfe_main.init()
+                print("AD9082 reconfigured.")
+            elif end_instr == '2':
+                print("Power cycling and reconfiguring AD9082...")
+                supplies.disable_supplies()
+                time.sleep(2)
+                supplies.configure_supplies()
+                ads9, ad9082, uc, args = txfe_main.init()
         
         supplies.disable_supplies()
         print("supplies disabled")
