@@ -26,7 +26,7 @@ lib_folder = r'C:\Git\Rad-Effects-Test-Software\PythonScripts\AD\AD9082\API\data
 
 # FPGA images
 fpga_ce = r'ad9986_ads9v2_fmc.bin'
-fpga_pe = r'C:\Git\Rad-Effects-Test-Software\PythonScripts\AD\AD9082_PE_Board.bin'
+fpga_pe = r'C:\Git\Rad-Effects-Test-Software\PythonScripts\AD\AD9082\AD9082_PE_Board.bin'
 always_load_fpga_image = False # If True, fpga image is always loaded at startup. If False, will only load image if one not detected.
 
 def info():

@@ -308,15 +308,13 @@ def init(uc_arg=None, realonly=None):
     ret_val, fpga_ver = ads9.adi_ads9_ver_get(int())
     ret_val, fpga_sw_ver = ads9.adi_ads9_sw_ver_get(int())
     print("ADS9 FPGA image v:{0:08X} sv:{1:08X}".format(fpga_ver, fpga_sw_ver))
-    clk_config_factory = ClockConfigFactory(ads9, ad9082, hmc7044)
+    clk_config_factory = ClockConfigFactory(ads9, ad9082, hmc7044=None)
     clk_config = clk_config_factory.create(uc)
     dev_config_factory = DeviceConfigFactory(ad9082, ads9)
     dev_config = dev_config_factory.create(uc)
     print("Initializing clocks.")
     clk_config.configure(uc.ref_clk_hz, uc.fpga_ref_clk_hz, uc.jrx_jesd.jesd_jesdv)
-    return_val, chip_id = hmc7044.adi_hmc7044_device_chip_id_get(adi_cms_chip_id_t())
-    print("hmc7044 chip id (type, id, grade, rev): ", hex(chip_id.chip_type), 
-        hex(chip_id.prod_id), hex(chip_id.prod_grade), hex(chip_id.dev_revision))
+
     print("Initializing clocks done.")
     print("Initializing device.")
     dev_config.configure(uc, pllEn=settings.enable_pll, board_type=settings.eval_board_type)
