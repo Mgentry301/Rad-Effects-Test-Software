@@ -1,0 +1,14 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+
+[packages]
+pythonnet = "==2.5.1"
+numpy = "==1.19.2"
+paramiko = "==2.11.0"
+matplotlib = "==3.3.1"
+scipy = "==1.5.2"
+
