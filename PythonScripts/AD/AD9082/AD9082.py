@@ -28,6 +28,24 @@ supply_labels=[
     'k3 ch1 V', 'k3 ch2 V', 'k3 ch3 V',
     'k3 ch1 I', 'k3 ch2 I', 'k3 ch3 I',          
 ]
+registers_needed = {
+        'dac_pd': 0x00000090,
+        'phy_pd': 0x00000401,
+        'ser_pd': 0x00000750,
+        'one_shot': 0x000000B8,
+        'JTx_link_en': 0x0000062E,
+        'JRx_link_en': 0x00000596,
+        'JRx_link_state': 0x0000055E,
+        'JR_lane_status_0': 0x000004EE,
+        'JR_lane_status_1': 0x000004EF,
+        'JR_lane_status_2': 0x000004F0,
+        'JR_lane_status_3': 0x000004F1,
+        'JR_lane_status_4': 0x000004F2,
+        'JR_lane_status_5': 0x000004F3,
+        'JR_lane_status_6': 0x000004F4,
+        'JR_lane_status_7': 0x000004F5,
+        'JR_lane_status_8': 0x000004F6
+    }
 
 def save_workbook_async(workbook, filename):
     def save():
@@ -131,7 +149,24 @@ class SignalGenerators:
             gen.on()
          
 
-
+class Reader:
+    registers = {}
+    labels = ['dac_pd', 
+              'phy_pd',
+              'ser_pd',
+              'one_shot',
+              'JTx_link_en',
+              'JRx_link_en',
+              'JRx_link_state',
+              'JR_lane_status']
+    
+    def read(registers=registers):
+        reg_list = []
+        for addr in registers:
+            a = registers_needed[addr]
+            ret_val, reg_val = ad9082.adi_ad9082_device_spi_register_get(a, int())
+            reg_list.append(reg_val)
+        return reg_list
 
 def supply_reader_thread(supplies, stop_event):
     global latest_supply_data
@@ -146,7 +181,7 @@ def supply_reader_thread(supplies, stop_event):
         sleep_time = max(0, interval - elapsed)
         time.sleep(sleep_time)
 
-def data_reader(data_queue, stop_event, run_type):
+def data_reader(reader, data_queue, stop_event, run_type):
     """
     Reads data continuously and stores it in a queue.
     Tracks the number of register reads and data captures.
@@ -166,13 +201,19 @@ def data_reader(data_queue, stop_event, run_type):
         if supply_data is not None:
             data_queue.put(supply_data)
 
+        if run_type != '1':
+            # Read registers
+            registers = reader.read(registers_needed)
+            data_queue.put(registers)
+            total_reg_count += 1
+
         with capture_count_lock:
             total_capture_count += 1    
 
         # Log performance every sec_interval seconds
         sec_interval = 10
         if time.time() - start_time >= sec_interval:
-            if run_type ==1: captures_last_x_sec = total_capture_count - last_capture_count
+            if run_type == '1' : captures_last_x_sec = total_capture_count - last_capture_count
             else: captures_last_x_sec = total_reg_count - last_reg_count
 
             print(f"Avg Reads in last {sec_interval} sec: {captures_last_x_sec/sec_interval}")
@@ -199,11 +240,16 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
     supply_sheet = workbook.create_sheet(title = "Supply Data")
     for col_idx, value in enumerate(supply_labels, start=2):  # Write data vertically
         supply_sheet.cell(row=1, column=col_idx, value=value)
+    register_sheet = workbook.create_sheet(title = "Register Data")
+    for col_idx, value in enumerate(registers_needed.keys(), start=2):  # Write data vertically
+        register_sheet.cell(row=1, column=col_idx, value=value)
+    
 
     buffer = []
     buffer_size = 10  # Adjust buffer size as needed
     supply_row = 2
     cap_row = 2
+    reg_row = 2
 
     # Wait for frequency axis if freq_queue is provided
     freq_labels = None
@@ -236,20 +282,26 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
             if len(buffer) >= buffer_size:
                 for item in buffer:
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-                    if len(item)<=24: #supply data
+                    if len(item)==len(supply_labels): #supply data
                         supply_sheet.cell(row=supply_row, column=1, value=timestamp)  # Timestamp in col 1
                         for col_idx, value in enumerate(item, start=2):  # Write data vertically
                             supply_sheet.cell(row=supply_row, column=col_idx, value=value)
                         supply_row += 1
-                    else:  # Capture data
+                    elif len(item)==401:  # Capture data
                         capture_sheet.cell(row=cap_row, column=1, value=timestamp)  # Timestamp in row 1
                         for col_idx, value in enumerate(item.tolist(), start=2):  # Write data vertically
                             capture_sheet.cell(row=cap_row, column=col_idx, value=value)
                         cap_row += 1
+                    elif len(item)==len(registers_needed):                        
+                        register_sheet.cell(row=reg_row, column=1, value=timestamp)  # Timestamp in row 1
+                        for col_idx, value in enumerate(item, start=2):  # Write data vertically
+                            register_sheet.cell(row=reg_row, column=col_idx, value=value)
+                        reg_row += 1
+
                 buffer.clear()
 
                 # Save the workbook every x amount of entries instead of every batch
-                if total_capture_count % 5000 ==0:
+                if total_capture_count % 50000 ==0 & total_capture_count>0:
                     print(f"total_capture_count:{total_capture_count} total_reg_count: {total_reg_count}")
                     print("Saving workbook...")
                     save_workbook_async(workbook, f"Run_{run_number}_data_log.xlsx")
@@ -262,16 +314,21 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
     if len(buffer) >= buffer_size:
         for item in buffer:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            if len(item)==24: #supply data
+            if len(item)==len(supply_labels): #supply data
                 supply_sheet.cell(row=supply_row, column=1, value=timestamp)  # Timestamp in col 1
                 for col_idx, value in enumerate(item, start=2):  # Write data vertically
                     supply_sheet.cell(row=supply_row, column=col_idx, value=value)
                 supply_row += 1
-            else:  # Capture data
+            elif len(item)==401:  # Capture data
                 capture_sheet.cell(row=cap_row, column=1, value=timestamp)  # Timestamp in row 1
                 for col_idx, value in enumerate(item.tolist(), start=2):  # Write data vertically
                     capture_sheet.cell(row=cap_row, column=col_idx, value=value)
                 cap_row += 1
+            elif len(item)==len(registers_needed):                        
+                register_sheet.cell(row=reg_row, column=1, value=timestamp)  # Timestamp in row 1
+                for col_idx, value in enumerate(item, start=2):  # Write data vertically
+                    register_sheet.cell(row=reg_row, column=col_idx, value=value)
+                reg_row += 1
     buffer.clear()
     print("Last save completed")
     save_workbook_async(workbook, f"Run_{run_number}_data_log.xlsx")
@@ -279,7 +336,7 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
 
 if __name__ == '__main__':
     run_number = input('\nEnter the run number: ')
-    run_type = input("Enter the run type (1 for SEL, anything else for SEU): ")
+    run_type = '1'#input("Enter the run type (1 for SEL, anything else for SEU): ")
     print("powering up ad9082 & configring system")
 
     # Configure supplies
@@ -303,7 +360,7 @@ if __name__ == '__main__':
     # Start threads
     supply_thread = threading.Thread(target=supply_reader_thread, args=(supplies, stop_event))
     logger_thread = threading.Thread(target=data_logger, args=(data_queue, stop_event, run_number, freq_queue))
-    reader_thread = threading.Thread(target=data_reader, args=(data_queue, stop_event, 1))
+    reader_thread = threading.Thread(target=data_reader, args=(Reader, data_queue, stop_event, run_type))
 
     supply_thread.start()
     logger_thread.start()
@@ -340,6 +397,9 @@ if __name__ == '__main__':
         
         supplies.disable_supplies()
         print("supplies disabled")
+
+        generators.disable_generators()
+        print("signal generators disabled")
 
         print("Stopping threads...")       
         stop_event.set()
