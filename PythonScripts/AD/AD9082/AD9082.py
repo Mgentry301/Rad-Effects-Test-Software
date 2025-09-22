@@ -66,10 +66,10 @@ class supplies:
     ]
     supply_values = []
     def __init__(self):
-        k0 = keithley('USB0::0x05E6::0x2230::9201602::INSTR')    
-        k1 = keithley('USB0::0x05E6::0x2230::9030930::INSTR')
-        k2 = keithley('USB0::0x05E6::0x2230::9201548::INSTR')
-        k3 = keithley('USB0::0x05E6::0x2230::9100252::INSTR')
+        k0 = keithley('USB0::0x05E6::0x2230::9201602::INSTR')  #RED     K0
+        k1 = keithley('USB0::0x05E6::0x2230::9030930::INSTR')  #YELLOW  K1
+        k2 = keithley('USB0::0x05E6::0x2230::9201548::INSTR')  #GREEN   K2
+        k3 = keithley('USB0::0x05E6::0x2230::9100252::INSTR')  #BLUE    K3
         self.supply_list = [k0, k1, k2, k3]  
         
     def configure_supplies(self):
