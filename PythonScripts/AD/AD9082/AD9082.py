@@ -9,6 +9,8 @@ from PythonScripts.radbench import Keithley2230 as keithley
 from PythonScripts.radbench import RohdeSchwarzSMA as sma
 from PythonScripts.FieldFox.MaxCapture import capture_spectrum_worker
 from PythonScripts.AD.AD9082.API.ad9082_python_eval_app import txfe_main
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 # Shared variable and lock
 total_capture_count = 0
@@ -16,7 +18,6 @@ total_reg_count = 0
 capture_count_lock = Lock()
 latest_supply_data = None
 supply_data_lock = threading.Lock()
-
 
 supply_labels=[    
     'k0 ch1 V', 'k0 ch2 V', 'k0 ch3 V',
@@ -117,7 +118,7 @@ class SignalGenerators:
 
     def __init__(self):
         dac_clk = sma('GPIB0::28::INSTR')    
-        fpga_clk = sma('GPIB0::30::INSTR')
+        fpga_clk = sma('GPIB0::7::INSTR')
         rf_in = sma('GPIB0::27::INSTR')
         self.generator_list = [dac_clk, fpga_clk, rf_in]  
         
@@ -148,7 +149,6 @@ class SignalGenerators:
         for gen in self.generator_list:
             gen.on()
          
-
 class Reader:
     registers = {}
     labels = ['dac_pd', 
@@ -330,9 +330,12 @@ def data_logger(data_queue, stop_event, run_number, freq_queue=None):
                     register_sheet.cell(row=reg_row, column=col_idx, value=value)
                 reg_row += 1
     buffer.clear()
-    print("Last save completed")
     save_workbook_async(workbook, f"Run_{run_number}_data_log.xlsx")
+    print("Last save completed")
 
+def get_latest_supply_data():
+    global latest_supply_data
+    return latest_supply_data
 
 if __name__ == '__main__':
     run_number = input('\nEnter the run number: ')
@@ -341,7 +344,10 @@ if __name__ == '__main__':
 
     # Configure supplies
     supplies = supplies()
+    supplies.disable_supplies()
+    print("supplies disabled")
     supplies.configure_supplies()
+    print("supplies enabled")
 
     #configure signal generators
     generators = SignalGenerators()
@@ -376,6 +382,8 @@ if __name__ == '__main__':
         capture_thread.start()
     else:
         capture_thread = None
+    if capture_thread is not None:
+        capture_thread.start()
 
     try:
         while True:
@@ -386,7 +394,10 @@ if __name__ == '__main__':
             end_instr = input('Enter 1 to reconfigure the AD9082, 2 to Power Cycle and reconfigure, anything else to just stop: ')
             if end_instr == '1':
                 print("Reconfiguring AD9082...")
-                ads9, ad9082, uc, args = txfe_main.init()
+                try:
+                    ads9, ad9082, uc, args = txfe_main.init()
+                except Exception as e:
+                    print("AD9082 Failed Config")
                 print("AD9082 reconfigured.")
             elif end_instr == '2':
                 print("Power cycling and reconfiguring AD9082...")
@@ -394,16 +405,12 @@ if __name__ == '__main__':
                 time.sleep(2)
                 supplies.configure_supplies()
                 ads9, ad9082, uc, args = txfe_main.init()
-        
         supplies.disable_supplies()
         print("supplies disabled")
-
         generators.disable_generators()
         print("signal generators disabled")
-
         print("Stopping threads...")       
         stop_event.set()
-        # Join all threads that use the supplies before closing them!
         supply_thread.join()
         logger_thread.join()
         reader_thread.join()

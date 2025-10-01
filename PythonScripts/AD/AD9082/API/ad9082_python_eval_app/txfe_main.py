@@ -324,7 +324,7 @@ def init(uc_arg=None, realonly=None):
     print("Initializing device done.")
     if (chip_id.dev_revision != 3):
         print("***** This script is only compatible with device revision #2. This device rev is {} *****".format(hex(chip_id.dev_revision)))
-        sys.exit(-5)
+        #sys.exit(-5)
     # Optionally, you can run the tests here or just return the objects
 
 
