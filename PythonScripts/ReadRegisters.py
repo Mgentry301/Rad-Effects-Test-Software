@@ -391,25 +391,24 @@ def execute_logic(client, prod_name, prod_family):
     logic_function(client)
     sys.path = initial_path  # Reset sys.path to its original state
 
-def execute_macro(client,filename,config, prod_family):
+def execute_macro(client,config, prod_family):
     execute_logic(client,config['product_name'],prod_family)
+    input(config['performance_check'])  
+    register_read_array = [str(x) for x in config['register_read_array']]
+    print("registers to be recorded")
+    print(register_read_array)
 
-    input(config['performance_check'])
-
+def reccord_registers(client,config,register_read_array,filename):
     Keep_Looping = True
     first_run = True    
     dict_results = {}   
     csvf = Results_File( filename )
-     
-    register_read_array = [str(x) for x in config['register_read_array']]
-    print("registers to be recorded")
-    print(register_read_array)
     input("\nPress any key to begin recording")
     
     print("\n" + "recording data now")
     print("press CTRL + C to end program")
 
-    while Keep_Looping:
+    while True:
         output_register_list = register_loop(client,register_read_array,len(register_read_array))
         current_time = time.strftime("%H:%M:%S")
         current_date = time.strftime("%d/%m/%Y")
