@@ -15,116 +15,111 @@ import sys
 from functools import partial
 
 from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtGui import QPalette
+from PyQt5.QtCore import Qt
 import pyvisa
 
 from keithley2230 import Keithley2230
 
 
+import logging
+
 class KeysightEL:
-    """Minimal pyvisa wrapper for Keysight EL34243A-like electronic load."""
+    """PyVISA wrapper for Keysight EL34243A Dual Input DC Electronic Load (with correct mode/value SCPI)."""
     def __init__(self, resource):
         self.resource = resource
         self.rm = None
         self.dev = None
+        import logging
+        self.logger = logging.getLogger("KeysightEL")
+        if not self.logger.hasHandlers():
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+            self.logger.addHandler(handler)
+        self.logger.setLevel(logging.DEBUG)
 
     def open(self):
         self.rm = pyvisa.ResourceManager()
         self.dev = self.rm.open_resource(self.resource, timeout=2000)
-        # common termination settings
         try:
             self.dev.write_termination = '\n'
             self.dev.read_termination = '\n'
         except Exception:
             pass
+        self.logger.info(f"Opened resource {self.resource}")
 
     def close(self):
         try:
             if self.dev is not None:
-                try:
-                    self.dev.close()
-                except Exception:
-                    pass
+                self.dev.close()
             if self.rm is not None:
-                try:
-                    self.rm.close()
-                except Exception:
-                    pass
+                self.rm.close()
         finally:
             self.dev = None
             self.rm = None
+        self.logger.info("Closed resource")
 
     def get_identification(self):
-        return self.dev.query("*IDN?")
+        self.logger.debug("Query: *IDN?")
+        resp = self.dev.query("*IDN?")
+        self.logger.debug(f"Response: {resp}")
+        return resp
+
+    def select_channel(self, channel: int):
+        cmd = f":INSTrument:NSELect {channel}"
+        self.logger.debug(f"Write: {cmd}")
+        self.dev.write(cmd)
 
     def set_input(self, channel: int, on: bool):
-        # many loads accept "INP ON" (global) or "INP{n} ON" / "INP<n>:STATe ON"
-        cmd = f"INP{channel} {'ON' if on else 'OFF'}"
-        try:
-            self.dev.write(cmd)
-            return
-        except Exception:
-            pass
-        # fallback global
-        cmd2 = f"INP {'ON' if on else 'OFF'}"
-        self.dev.write(cmd2)
+        self.select_channel(channel)
+        cmd = f":INPut:STATe {'ON' if on else 'OFF'}"
+        self.logger.debug(f"Write: {cmd}")
+        self.dev.write(cmd)
 
     def set_mode(self, channel: int, mode: str):
-        # mode should be 'CC', 'CV', or 'CR'
-        mapping = {'CC': 'CURR', 'CV': 'VOLT', 'CR': 'RES'}
+        self.select_channel(channel)
+        mapping = {'CC': 'CURR', 'CV': 'VOLT', 'CR': 'RES', 'CP': 'POW'}
         scpi_mode = mapping.get(mode.upper(), mode)
-        # try function mode command
-        try:
-            self.dev.write(f"FUNC:MODE {scpi_mode}")
-            return
-        except Exception:
-            pass
-        # try alternative
-        self.dev.write(f"MODE {scpi_mode}")
+        cmd = f"MODE {scpi_mode}"
+        self.logger.debug(f"Write: {cmd}")
+        self.dev.write(cmd)
 
     def set_parameter(self, channel: int, mode: str, value: float):
-        # writes CURR/VOLT/RES depending on mode
+        self.select_channel(channel)
         if mode.upper() == 'CC':
-            self.dev.write(f"CURR {value}")
+            cmd = f":CURRent:LEVel {value}"
         elif mode.upper() == 'CV':
-            self.dev.write(f"VOLT {value}")
+            cmd = f":SOURce:VOLTage:LEVel {value}"
         elif mode.upper() == 'CR':
-            self.dev.write(f"RES {value}")
+            cmd = f":SOURce:RESistance:LEVel {value}"
         else:
             raise ValueError("Unknown mode")
+        self.logger.debug(f"Write: {cmd}")
+        self.dev.write(cmd)
 
     def measure_current(self, channel: int):
-        # many loads support MEAS:CURR? optionally with channel
-        try:
-            return float(self.dev.query(f"MEAS:CURR? (@{channel})"))
-        except Exception:
-            pass
-        try:
-            return float(self.dev.query("MEAS:CURR?"))
-        except Exception:
-            raise
+        self.select_channel(channel)
+        cmd = ":MEASure:CURRent?"
+        self.logger.debug(f"Query: {cmd}")
+        resp = self.dev.query(cmd)
+        self.logger.debug(f"Response: {resp}")
+        return float(resp)
 
     def measure_voltage(self, channel: int):
-        try:
-            return float(self.dev.query(f"MEAS:VOLT? (@{channel})"))
-        except Exception:
-            pass
-        try:
-            return float(self.dev.query("MEAS:VOLT?"))
-        except Exception:
-            raise
+        self.select_channel(channel)
+        cmd = ":MEASure:VOLTage?"
+        self.logger.debug(f"Query: {cmd}")
+        resp = self.dev.query(cmd)
+        self.logger.debug(f"Response: {resp}")
+        return float(resp)
 
     def get_input_state(self, channel: int):
-        # try queries
-        for q in (f"INP{channel}?", "INP?", "INPut:STATe?"):
-            try:
-                r = self.dev.query(q).strip()
-                if r in ('1', 'ON', 'On', 'on', 'ON\n'):
-                    return True
-                if r in ('0', 'OFF', 'Off', 'off'):
-                    return False
-            except Exception:
-                continue
-        return False
+        self.select_channel(channel)
+        cmd = ":INPut:STATe?"
+        self.logger.debug(f"Query: {cmd}")
+        resp = self.dev.query(cmd).strip().upper()
+        self.logger.debug(f"Response: {resp}")
+        return resp in ('1', 'ON')
 
 
 class KeithleyPanel(QtWidgets.QWidget):
@@ -377,7 +372,7 @@ class KeysightPanel(QtWidgets.QWidget):
         mlay = QtWidgets.QHBoxLayout()
         mlay.addWidget(QtWidgets.QLabel('Mode:'))
         self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(['CC', 'CV', 'CR'])
+        self.mode_combo.addItems(['CC', 'CV', 'CR', 'CP'])
         mlay.addWidget(self.mode_combo)
         mlay.addWidget(QtWidgets.QLabel('Value:'))
         self.mode_value = QtWidgets.QLineEdit('0.1')
@@ -495,6 +490,9 @@ class KeysightPanel(QtWidgets.QWidget):
         self.status_label.setText('Read complete')
 
 
+import json
+import os
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -503,37 +501,164 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         layout = QtWidgets.QVBoxLayout(central)
 
-        # Top: add-by-SN / resource input and type selector
-        top_row = QtWidgets.QHBoxLayout()
-        top_row.addWidget(QtWidgets.QLabel('Add instrument (SN or full VISA resource):'))
-        self.add_input = QtWidgets.QLineEdit()
-        self.add_input.setPlaceholderText('e.g. 9200976 or USB0::0x05E6::0x2230::9200976::INSTR')
-        self.type_combo = QtWidgets.QComboBox()
-        self.type_combo.addItems(['Keithley 2230', 'Keysight EL34243A'])
-        self.add_btn = QtWidgets.QPushButton('Add Instrument')
-        self.add_btn.clicked.connect(self.on_add_instrument)
+        # Configs folder
+        self.configs_dir = os.path.join(os.path.dirname(__file__), 'configs')
+        os.makedirs(self.configs_dir, exist_ok=True)
 
-        # Scan and detected devices UI
+
+
+        # Top: Scan VISA, detected devices, Save/Load Config
+        top_row = QtWidgets.QHBoxLayout()
         self.scan_btn = QtWidgets.QPushButton('Scan VISA')
         self.scan_btn.clicked.connect(self.on_scan_instruments)
         self.detected_combo = QtWidgets.QComboBox()
         self.detected_combo.setMinimumWidth(350)
         self.add_selected_btn = QtWidgets.QPushButton('Add Selected')
         self.add_selected_btn.clicked.connect(self.on_add_selected_instrument)
+        self.save_btn = QtWidgets.QPushButton('Save Config')
+        self.save_btn.clicked.connect(self.save_config_dialog)
+        self.load_combo = QtWidgets.QComboBox()
+        self.load_combo.setMinimumWidth(200)
+        self.load_btn = QtWidgets.QPushButton('Load Config')
+        self.load_btn.clicked.connect(self.load_config_dialog)
+        self.refresh_configs_list()
 
-        top_row.addWidget(self.add_input)
-        top_row.addWidget(self.type_combo)
-        top_row.addWidget(self.add_btn)
         top_row.addWidget(self.scan_btn)
         top_row.addWidget(self.detected_combo)
         top_row.addWidget(self.add_selected_btn)
+        top_row.addWidget(self.save_btn)
+        top_row.addWidget(self.load_combo)
+        top_row.addWidget(self.load_btn)
         layout.addLayout(top_row)
 
         # Tabs for instruments
         self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setTabsClosable(True)
+        self.tabs.tabCloseRequested.connect(self.close_tab)
         layout.addWidget(self.tabs)
 
         self.statusBar().showMessage('Ready')
+
+    # Do not autoload config on startup; GUI starts empty
+
+    def refresh_configs_list(self):
+        self.load_combo.clear()
+        files = [f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')]
+        for f in files:
+            self.load_combo.addItem(f)
+        if files:
+            self.load_combo.setCurrentIndex(0)
+
+    def save_config_dialog(self):
+        # Ask for filename to save config
+        fname, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Config', self.configs_dir, 'JSON Files (*.json)')
+        if not fname:
+            return
+        if not fname.lower().endswith('.json'):
+            fname += '.json'
+        self.save_config(fname)
+        self.refresh_configs_list()
+
+    def save_config(self, path):
+        config = []
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            tab_type = 'Keithley 2230' if isinstance(widget, KeithleyPanel) else 'Keysight EL34243A'
+            entry = {'type': tab_type, 'resource': widget.resource}
+            if tab_type == 'Keithley 2230':
+                entry['channels'] = {}
+                for ch in (1, 2, 3):
+                    entry['channels'][ch] = {
+                        'voltage': widget.vol_edits[ch].text(),
+                        'current': widget.iam_edits[ch].text(),
+                        'output': widget.master_out_btn.isChecked()
+                    }
+            else:
+                entry['channels'] = {}
+                for ch in (1, 2):
+                    entry['channels'][ch] = {
+                        'mode': widget.mode_combo.currentText(),
+                        'value': widget.mode_value.text(),
+                        'input': widget.input_toggle.isChecked()
+                    }
+            config.append(entry)
+        try:
+            with open(path, 'w') as f:
+                json.dump(config, f, indent=2)
+            self.statusBar().showMessage(f'Saved config to {path}', 4000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Save failed', str(e))
+
+    def load_config_dialog(self):
+        # Load config from selected file in dropdown
+        fname = self.load_combo.currentText()
+        if not fname:
+            QtWidgets.QMessageBox.information(self, 'No config', 'No config file selected.')
+            return
+        path = os.path.join(self.configs_dir, fname)
+        self.load_config(path)
+
+    def load_config(self, path):
+        if not os.path.exists(path):
+            QtWidgets.QMessageBox.information(self, 'No config', f'Config file not found: {path}')
+            return
+        try:
+            with open(path, 'r') as f:
+                config = json.load(f)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Load failed', str(e))
+            return
+        # Remove all tabs
+        while self.tabs.count():
+            self.tabs.removeTab(0)
+        # Add instruments from config
+        for entry in config:
+            inst_type = entry.get('type', 'Keithley 2230')
+            resource = entry.get('resource', '')
+            panel = None
+            if inst_type == 'Keithley 2230':
+                panel = KeithleyPanel(resource)
+                self.tabs.addTab(panel, resource)
+                panel.resource_edit.setText(resource)
+                panel.on_connect()
+                # Set channel values and output
+                for ch in (1, 2, 3):
+                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
+                    if ch_cfg:
+                        panel.vol_edits[ch].setText(str(ch_cfg.get('voltage', '0')))
+                        panel.iam_edits[ch].setText(str(ch_cfg.get('current', '0.03')))
+                # Set output state
+                panel.master_out_btn.setChecked(any(
+                    entry['channels'].get(str(ch), {}).get('output', False)
+                    for ch in (1, 2, 3)
+                ))
+                panel.master_out_btn.setText('All On' if panel.master_out_btn.isChecked() else 'All Off')
+                if panel.master_out_btn.isChecked():
+                    panel.on_toggle_all_outputs()
+            else:
+                panel = KeysightPanel(resource)
+                self.tabs.addTab(panel, resource)
+                panel.resource_edit.setText(resource)
+                panel.on_connect()
+                # Set channel values
+                for ch in (1, 2):
+                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
+                    if ch_cfg:
+                        panel.ch_select.setCurrentIndex(ch - 1)
+                        panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
+                        panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
+                        panel.input_toggle.setChecked(ch_cfg.get('input', False))
+                        panel.on_apply_mode()
+                        panel.on_toggle_input()
+        self.statusBar().showMessage(f'Loaded config from {path}', 4000)
+        self.refresh_configs_list()
+
+    def load_config_on_startup(self):
+        # Load first config file in configs folder if present
+        files = [f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')]
+        if files:
+            path = os.path.join(self.configs_dir, files[0])
+            self.load_config(path)
 
     def add_instrument_panel(self, resource: str, label: str = None, inst_type: str = 'Keithley 2230'):
         tab_label = label if label else resource
@@ -557,25 +682,7 @@ class MainWindow(QtWidgets.QMainWindow):
         resource = sn if '::' in sn else f'USB0::0x05E6::0x2230::{sn}::INSTR'
         self.add_instrument_panel(resource, sn if '::' not in sn else resource, inst_type)
 
-    def on_add_instrument(self):
-        text = self.add_input.text().strip()
-        if not text:
-            QtWidgets.QMessageBox.warning(self, 'Input required', 'Enter a serial number or full VISA resource.')
-            return
-        inst_type = self.type_combo.currentText()
-        if '::' in text:
-            resource = text
-            label = text
-        else:
-            # if user selected Keysight, do not assume same USB VID/PID; use SN as label and let user edit resource
-            if inst_type.startswith('Keysight'):
-                resource = text  # allow user to replace with full resource if needed
-            else:
-                resource = f'USB0::0x05E6::0x2230::{text}::INSTR'
-            label = text
-        self.add_instrument_panel(resource, label, inst_type)
-        self.statusBar().showMessage(f'Added {label}', 3000)
-        self.add_input.clear()
+    # Removed manual Add instrument by SN/resource; use VISA scan and Add Selected only
 
     def on_scan_instruments(self):
         """Scan VISA resources and populate detected_combo with resources. Attempt to classify type by *IDN?"""
@@ -616,8 +723,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.detected_combo.addItem(f'{inst_type}: {label}    ({resource})', (resource, inst_type))
 
         self.statusBar().showMessage(f'Found {len(found)} device(s)', 4000)
-        if found:
-            self.add_input.setText(found[0][1])
+        # Removed self.add_input.setText; Add instrument text box no longer exists
 
     def on_add_selected_instrument(self):
         data = self.detected_combo.currentData()
@@ -629,6 +735,14 @@ class MainWindow(QtWidgets.QMainWindow):
         label = parts[3] if len(parts) >= 4 else resource
         self.add_instrument_panel(resource, label, inst_type)
         self.statusBar().showMessage(f'Added {label}', 3000)
+
+    def close_tab(self, index):
+        widget = self.tabs.widget(index)
+        try:
+            widget.close()
+        except Exception:
+            pass
+        self.tabs.removeTab(index)
 
     def closeEvent(self, event):
         # close all panels to ensure instruments are closed
@@ -643,6 +757,72 @@ class MainWindow(QtWidgets.QMainWindow):
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    # Set Fusion style for cross-platform consistency
+    app.setStyle('Fusion')
+    # Mac-like palette
+    palette = QPalette()
+    palette.setColor(QPalette.Window, Qt.white)
+    palette.setColor(QPalette.WindowText, QtCore.Qt.black)
+    palette.setColor(QPalette.Base, Qt.white)
+    palette.setColor(QPalette.AlternateBase, QtCore.Qt.lightGray)
+    palette.setColor(QPalette.ToolTipBase, QtCore.Qt.white)
+    palette.setColor(QPalette.ToolTipText, QtCore.Qt.black)
+    palette.setColor(QPalette.Text, QtCore.Qt.black)
+    palette.setColor(QPalette.Button, QtCore.Qt.white)
+    palette.setColor(QPalette.ButtonText, QtCore.Qt.black)
+    palette.setColor(QPalette.Highlight, QtCore.Qt.gray)
+    palette.setColor(QPalette.HighlightedText, QtCore.Qt.black)
+    app.setPalette(palette)
+    # Mac-like font
+    font = app.font()
+    font.setFamily('San Francisco')
+    font.setPointSize(12)
+    app.setFont(font)
+    # Mac-like style sheet for rounded buttons and spacing
+    app.setStyleSheet('''
+        QPushButton {
+            border-radius: 8px;
+            padding: 6px 16px;
+            background: #f5f5f7;
+            color: #222;
+            font-weight: 500;
+            border: 1px solid #d1d1d6;
+        }
+        QPushButton:pressed {
+            background: #e0e0e0;
+        }
+        QLineEdit, QComboBox {
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: #fff;
+            border: 1px solid #d1d1d6;
+        }
+        QTabWidget::pane {
+            border-radius: 10px;
+            border: 1px solid #d1d1d6;
+            background: #f5f5f7;
+        }
+        QTabBar::tab {
+            border-radius: 8px;
+            padding: 8px 20px;
+            background: #fff;
+            border: 1px solid #d1d1d6;
+            margin: 2px;
+        }
+        QTabBar::tab:selected {
+            background: #e5e5ea;
+            color: #007aff;
+        }
+        QGroupBox {
+            border-radius: 10px;
+            border: 1px solid #d1d1d6;
+            margin-top: 10px;
+            background: #f5f5f7;
+        }
+        QLabel {
+            color: #222;
+        }
+    ''')
     w = MainWindow()
     w.resize(1000, 700)
     w.show()
