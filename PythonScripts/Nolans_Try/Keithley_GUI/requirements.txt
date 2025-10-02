@@ -1,0 +1,3 @@
+pyvisa>=1.11
+pyqt5>=5.15
+pyqtgraph>=0.12
