@@ -716,6 +716,51 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
         except Exception:
             pass
+
+    def _find_replacement_candidates(self, saved_resource, inst_type_hint, rm: pyvisa.ResourceManager = None):
+        """Return a list of candidate resources found on the system that appear to match
+        the requested instrument type. Each item is (label, resource, inst_type_string).
+        """
+        found = []
+        try:
+            if rm is None:
+                rm = pyvisa.ResourceManager()
+            resources = rm.list_resources()
+        except Exception:
+            return found
+
+        for res in resources:
+            try:
+                dev = rm.open_resource(res, timeout=1000)
+                idn = ''
+                try:
+                    idn = dev.query('*IDN?')
+                except Exception:
+                    idn = ''
+                try:
+                    dev.close()
+                except Exception:
+                    pass
+                lidn = idn.upper() if idn else ''
+                label = res.split('::')[3] if '::' in res else res
+                # try to classify
+                t = 'Unknown'
+                if 'KEITHLEY' in lidn or '2230' in res.upper() or 'KEITHLEY' in res.upper():
+                    t = 'Keithley 2230'
+                elif 'KEYSIGHT' in lidn or 'AGILENT' in lidn or 'EL34243' in lidn.upper():
+                    t = 'Keysight EL34243A'
+                elif 'HITTITE' in lidn or 'SIG GEN' in lidn or 'HITTITE' in res.upper():
+                    t = 'Hittite Sig Gen'
+                # If the type hint matches or the saved_resource contains a serial-like pattern, accept
+                if inst_type_hint and inst_type_hint.startswith(t.split()[0]):
+                    found.append((label, res, t))
+                else:
+                    # fallback: accept if type strings equal
+                    if t == inst_type_hint:
+                        found.append((label, res, t))
+            except Exception:
+                continue
+        return found
     def sequence_power_on(self):
         order = self.seq_order_edit.text().strip()
         if not order:
@@ -1158,7 +1203,18 @@ class MainWindow(QtWidgets.QMainWindow):
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
             tab_type = 'Keithley 2230' if isinstance(widget, KeithleyPanel) else 'Keysight EL34243A'
-            entry = {'type': tab_type, 'resource': widget.resource}
+            # determine a saved name: prefer the editable name if present, otherwise the current tab text
+            try:
+                if hasattr(widget, 'name_edit') and widget.name_edit.text().strip():
+                    saved_name = widget.name_edit.text().strip()
+                else:
+                    saved_name = self.tabs.tabText(i)
+            except Exception:
+                try:
+                    saved_name = self.tabs.tabText(i)
+                except Exception:
+                    saved_name = ''
+            entry = {'type': tab_type, 'resource': widget.resource, 'name': saved_name}
             if tab_type == 'Keithley 2230':
                 entry['channels'] = {}
                 for ch in (1, 2, 3):
@@ -1221,6 +1277,14 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, 'Load failed', str(e))
             return
 
+        # Build current VISA resource list to support substitutions
+        try:
+            rm_for_load = pyvisa.ResourceManager()
+            current_resources = list(rm_for_load.list_resources())
+        except Exception:
+            rm_for_load = None
+            current_resources = []
+
         # Backwards compatibility: older configs were lists of instruments
         if isinstance(content, list):
             instruments = content
@@ -1235,15 +1299,74 @@ class MainWindow(QtWidgets.QMainWindow):
         while self.tabs.count():
             self.tabs.removeTab(0)
 
+        # Track resources we've added during this load to avoid duplicates (covers substitutions)
+        used_resources = set()
+
         # Add instruments from config
         for entry in instruments:
             inst_type = entry.get('type', 'Keithley 2230')
             resource = entry.get('resource', '')
+            # If the saved resource isn't available, try to find a replacement
+            if resource and resource not in current_resources:
+                # Look for candidates of same inst_type
+                try:
+                    candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
+                except Exception:
+                    candidates = []
+                if candidates:
+                    # Present a small dialog to allow substitution or cancel loading
+                    items = [f'{c[2]}    ({c[1]})' for c in candidates]
+                    item, ok = QtWidgets.QInputDialog.getItem(self, 'Substitute instrument',
+                        f'Original resource not found: {resource}\nSelect substitute or Cancel to abort load:', items, 0, False)
+                    if not ok:
+                        QtWidgets.QMessageBox.information(self, 'Load cancelled', 'Loading cancelled by user')
+                        # close resource manager if used
+                        try:
+                            if rm_for_load is not None:
+                                rm_for_load.close()
+                        except Exception:
+                            pass
+                        return
+                    # map selected item back to resource
+                    sel_idx = items.index(item)
+                    resource = candidates[sel_idx][1]
+                else:
+                    # No candidates found: offer to skip this instrument or cancel entire load
+                    resp = QtWidgets.QMessageBox.question(self, 'Instrument missing',
+                        f'Instrument {resource} of type {inst_type} not found and no replacements available.\nSkip this instrument? (No = cancel load)',
+                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
+                    if resp == QtWidgets.QMessageBox.No:
+                        try:
+                            if rm_for_load is not None:
+                                rm_for_load.close()
+                        except Exception:
+                            pass
+                        return
+                    else:
+                        # skip this instrument
+                        continue
             panel = None
+            # If this resource has already been used (for example a previous substitution
+            # mapped to the same VISA resource), reuse the existing panel rather than
+            # creating another tab for the same device.
+            if resource and resource in used_resources:
+                for i in range(self.tabs.count()):
+                    w = self.tabs.widget(i)
+                    if getattr(w, 'resource', None) == resource:
+                        panel = w
+                        break
             if inst_type == 'Keithley 2230':
                 panel = KeithleyPanel(resource)
                 self.tabs.addTab(panel, resource)
+                used_resources.add(resource)
                 panel.resource_edit.setText(resource)
+                # restore saved name if present
+                try:
+                    name_val = entry.get('name') if isinstance(entry, dict) else None
+                    if name_val and hasattr(panel, 'name_edit'):
+                        panel.name_edit.setText(name_val)
+                except Exception:
+                    pass
                 panel.on_connect()
                 # Set channel values and apply them to instrument
                 for ch in (1, 2, 3):
@@ -1262,7 +1385,15 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 panel = KeysightPanel(resource)
                 self.tabs.addTab(panel, resource)
+                used_resources.add(resource)
                 panel.resource_edit.setText(resource)
+                # restore saved name if present
+                try:
+                    name_val = entry.get('name') if isinstance(entry, dict) else None
+                    if name_val and hasattr(panel, 'name_edit'):
+                        panel.name_edit.setText(name_val)
+                except Exception:
+                    pass
                 panel.on_connect()
                 # Set channel values and apply them to instrument
                 for ch in (1, 2):
@@ -1279,6 +1410,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 pass
                         panel.input_toggle.setChecked(False)
                         panel.input_toggle.setText('Input Off')
+                    # end of per-panel setup
             # Set up tab name update callback for loaded panels
             def update_tab_name(panel=panel, resource=resource):
                 idx = self.tabs.indexOf(panel)
