@@ -1,3 +1,4 @@
+
 """
 Multi-instrument GUI: Keithley 2230 panels + Keysight EL34243A panel.
 - Add instruments by typing SN or full VISA resource.
@@ -19,110 +20,14 @@ from PyQt5.QtGui import QPalette
 from PyQt5.QtCore import Qt
 import pyvisa
 
-from keithley2230 import Keithley2230
-
-
-import logging
-
-class KeysightEL:
-    """PyVISA wrapper for Keysight EL34243A Dual Input DC Electronic Load (with correct mode/value SCPI)."""
-    def __init__(self, resource):
-        self.resource = resource
-        self.rm = None
-        self.dev = None
-        import logging
-        self.logger = logging.getLogger("KeysightEL")
-        if not self.logger.hasHandlers():
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-            self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
-
-    def open(self):
-        self.rm = pyvisa.ResourceManager()
-        self.dev = self.rm.open_resource(self.resource, timeout=2000)
-        try:
-            self.dev.write_termination = '\n'
-            self.dev.read_termination = '\n'
-        except Exception:
-            pass
-        self.logger.info(f"Opened resource {self.resource}")
-
-    def close(self):
-        try:
-            if self.dev is not None:
-                self.dev.close()
-            if self.rm is not None:
-                self.rm.close()
-        finally:
-            self.dev = None
-            self.rm = None
-        self.logger.info("Closed resource")
-
-    def get_identification(self):
-        self.logger.debug("Query: *IDN?")
-        resp = self.dev.query("*IDN?")
-        self.logger.debug(f"Response: {resp}")
-        return resp
-
-    def select_channel(self, channel: int):
-        cmd = f":INSTrument:NSELect {channel}"
-        self.logger.debug(f"Write: {cmd}")
-        self.dev.write(cmd)
-
-    def set_input(self, channel: int, on: bool):
-        self.select_channel(channel)
-        cmd = f":INPut:STATe {'ON' if on else 'OFF'}"
-        self.logger.debug(f"Write: {cmd}")
-        self.dev.write(cmd)
-
-    def set_mode(self, channel: int, mode: str):
-        self.select_channel(channel)
-        mapping = {'CC': 'CURR', 'CV': 'VOLT', 'CR': 'RES', 'CP': 'POW'}
-        scpi_mode = mapping.get(mode.upper(), mode)
-        cmd = f"MODE {scpi_mode}"
-        self.logger.debug(f"Write: {cmd}")
-        self.dev.write(cmd)
-
-    def set_parameter(self, channel: int, mode: str, value: float):
-        self.select_channel(channel)
-        if mode.upper() == 'CC':
-            cmd = f":CURRent:LEVel {value}"
-        elif mode.upper() == 'CV':
-            cmd = f":SOURce:VOLTage:LEVel {value}"
-        elif mode.upper() == 'CR':
-            cmd = f":SOURce:RESistance:LEVel {value}"
-        else:
-            raise ValueError("Unknown mode")
-        self.logger.debug(f"Write: {cmd}")
-        self.dev.write(cmd)
-
-    def measure_current(self, channel: int):
-        self.select_channel(channel)
-        cmd = ":MEASure:CURRent?"
-        self.logger.debug(f"Query: {cmd}")
-        resp = self.dev.query(cmd)
-        self.logger.debug(f"Response: {resp}")
-        return float(resp)
-
-    def measure_voltage(self, channel: int):
-        self.select_channel(channel)
-        cmd = ":MEASure:VOLTage?"
-        self.logger.debug(f"Query: {cmd}")
-        resp = self.dev.query(cmd)
-        self.logger.debug(f"Response: {resp}")
-        return float(resp)
-
-    def get_input_state(self, channel: int):
-        self.select_channel(channel)
-        cmd = ":INPut:STATe?"
-        self.logger.debug(f"Query: {cmd}")
-        resp = self.dev.query(cmd).strip().upper()
-        self.logger.debug(f"Response: {resp}")
-        return resp in ('1', 'ON')
+from Instruments.keithley2230 import Keithley2230
+from Instruments.keysight_el import KeysightEL
+from Instruments.hittite_siggen import HittiteSigGen
 
 
 class KeithleyPanel(QtWidgets.QWidget):
+    def set_tab_name_callback(self, callback):
+        self.name_edit.textChanged.connect(callback)
     """Panel for a Keithley 2230 instrument (uses keithley2230 wrapper)."""
     def __init__(self, resource, parent=None):
         super().__init__(parent)
@@ -131,10 +36,11 @@ class KeithleyPanel(QtWidgets.QWidget):
         self.latest_currents = {1: None, 2: None, 3: None}
         self._build_ui()
 
+
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
 
-        # Connection row
+            # Connection row
         row = QtWidgets.QHBoxLayout()
         self.resource_edit = QtWidgets.QLineEdit(self.resource)
         self.connect_btn = QtWidgets.QPushButton('Connect')
@@ -143,6 +49,13 @@ class KeithleyPanel(QtWidgets.QWidget):
         row.addWidget(self.resource_edit)
         row.addWidget(self.connect_btn)
         layout.addLayout(row)
+
+        # Name box row
+        name_row = QtWidgets.QHBoxLayout()
+        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
+        self.name_edit = QtWidgets.QLineEdit()
+        name_row.addWidget(self.name_edit)
+        layout.addLayout(name_row)
 
         # Channel setpoints
         self.vol_edits = {}
@@ -331,6 +244,8 @@ class KeithleyPanel(QtWidgets.QWidget):
 
 
 class KeysightPanel(QtWidgets.QWidget):
+    def set_tab_name_callback(self, callback):
+        self.name_edit.textChanged.connect(callback)
     """Panel for Keysight EL34243A-style dual-input electronic load."""
     def __init__(self, resource, parent=None):
         super().__init__(parent)
@@ -338,10 +253,11 @@ class KeysightPanel(QtWidgets.QWidget):
         self.dev = None  # KeysightEL instance
         self._build_ui()
 
+
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
 
-        # Connection row
+            # Connection row
         row = QtWidgets.QHBoxLayout()
         self.resource_edit = QtWidgets.QLineEdit(self.resource)
         self.connect_btn = QtWidgets.QPushButton('Connect')
@@ -350,6 +266,13 @@ class KeysightPanel(QtWidgets.QWidget):
         row.addWidget(self.resource_edit)
         row.addWidget(self.connect_btn)
         layout.addLayout(row)
+
+        # Name box row
+        name_row = QtWidgets.QHBoxLayout()
+        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
+        self.name_edit = QtWidgets.QLineEdit()
+        name_row.addWidget(self.name_edit)
+        layout.addLayout(name_row)
 
         # Channel selector (EL34243A has two inputs)
         ch_row = QtWidgets.QHBoxLayout()
@@ -490,9 +413,175 @@ class KeysightPanel(QtWidgets.QWidget):
         self.status_label.setText('Read complete')
 
 
+
 import json
 import os
+class HittiteSigGenPanel(QtWidgets.QWidget):
+    def on_toggle_output(self):
+        if self.dev is None:
+            self.status_label.setText('Not connected')
+            self.output_btn.setChecked(False)
+            return
+        on = self.output_btn.isChecked()
+        try:
+            self.dev.set_output(on)
+            self.output_btn.setText('Output On' if on else 'Output Off')
+            self.status_label.setText(f'Output {"ON" if on else "OFF"}')
+        except Exception as e:
+            self.status_label.setText(f'Failed to set output: {e}')
+            self.output_btn.setChecked(not on)
+    def set_tab_name_callback(self, callback):
+        self.name_edit.textChanged.connect(callback)
+    """Panel for Hittite Signal Generator (USB)."""
+    def __init__(self, resource, parent=None):
+        super().__init__(parent)
+        self.resource = resource
+        self.dev = None  # HittiteSigGen instance
+        self._build_ui()
 
+    def _build_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+
+            # Connection row
+        row = QtWidgets.QHBoxLayout()
+        self.resource_edit = QtWidgets.QLineEdit(self.resource)
+        self.connect_btn = QtWidgets.QPushButton('Connect')
+        self.connect_btn.clicked.connect(self.on_connect)
+        row.addWidget(QtWidgets.QLabel('VISA Resource:'))
+        row.addWidget(self.resource_edit)
+        row.addWidget(self.connect_btn)
+        layout.addLayout(row)
+
+        # Name box row
+        name_row = QtWidgets.QHBoxLayout()
+        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
+        self.name_edit = QtWidgets.QLineEdit()
+        name_row.addWidget(self.name_edit)
+        layout.addLayout(name_row)
+
+        # Frequency control
+        freq_row = QtWidgets.QHBoxLayout()
+        freq_row.addWidget(QtWidgets.QLabel('Frequency:'))
+        self.freq_edit = QtWidgets.QLineEdit('1')
+        freq_row.addWidget(self.freq_edit)
+        self.freq_unit_combo = QtWidgets.QComboBox()
+        self.freq_unit_combo.addItems(['GHz', 'MHz', 'KHz', 'Hz'])
+        self.freq_unit_combo.setCurrentIndex(0)
+        freq_row.addWidget(self.freq_unit_combo)
+        self.freq_set_btn = QtWidgets.QPushButton('Set Frequency')
+        self.freq_set_btn.clicked.connect(self.on_set_frequency)
+        freq_row.addWidget(self.freq_set_btn)
+        layout.addLayout(freq_row)
+
+        # Power control
+        pow_row = QtWidgets.QHBoxLayout()
+        pow_row.addWidget(QtWidgets.QLabel('Power (dB):'))
+        self.pow_edit = QtWidgets.QLineEdit('0')
+        pow_row.addWidget(self.pow_edit)
+        self.pow_set_btn = QtWidgets.QPushButton('Set Power')
+        self.pow_set_btn.clicked.connect(self.on_set_power)
+        pow_row.addWidget(self.pow_set_btn)
+        layout.addLayout(pow_row)
+
+        # Readouts
+        stats_group = QtWidgets.QGroupBox('Current Settings')
+        stats_layout = QtWidgets.QGridLayout()
+        self.meas_freq = QtWidgets.QLabel('-')
+        self.meas_pow = QtWidgets.QLabel('-')
+        font = self.meas_freq.font()
+        font.setPointSize(16)
+        font.setBold(True)
+        self.meas_freq.setFont(font)
+        self.meas_pow.setFont(font)
+        stats_layout.addWidget(QtWidgets.QLabel('Frequency:'), 0, 0)
+        stats_layout.addWidget(self.meas_freq, 0, 1)
+        stats_layout.addWidget(QtWidgets.QLabel('Power:'), 1, 0)
+        stats_layout.addWidget(self.meas_pow, 1, 1)
+        stats_group.setLayout(stats_layout)
+        layout.addWidget(stats_group)
+
+        # Bottom controls
+        bottom = QtWidgets.QHBoxLayout()
+        self.read_btn = QtWidgets.QPushButton('Read Now')
+        self.read_btn.clicked.connect(self.read_once)
+        bottom.addWidget(self.read_btn)
+        layout.addLayout(bottom)
+
+        self.status_label = QtWidgets.QLabel('')
+        layout.addWidget(self.status_label)
+
+        # Output On/Off button at the bottom
+        out_row = QtWidgets.QHBoxLayout()
+        self.output_btn = QtWidgets.QPushButton('Output Off')
+        self.output_btn.setCheckable(True)
+        self.output_btn.setChecked(False)
+        self.output_btn.clicked.connect(self.on_toggle_output)
+        out_row.addWidget(self.output_btn)
+        layout.addLayout(out_row)
+
+
+    def close(self):
+        try:
+            if self.dev is not None:
+                self.dev.close()
+        except Exception:
+            pass
+
+    def on_connect(self):
+        res = self.resource_edit.text().strip()
+        if not res:
+            self.status_label.setText('Enter VISA resource or SN')
+            return
+        try:
+            dev = HittiteSigGen(res)
+            dev.open()
+            idn = dev.get_identification()
+            self.dev = dev
+            self.status_label.setText(f'Connected: {idn.strip()}')
+        except Exception as e:
+            self.status_label.setText(f'Connect failed: {e}')
+
+    def on_set_frequency(self):
+        if self.dev is None:
+            self.status_label.setText('Not connected')
+            return
+        try:
+            freq_val = float(self.freq_edit.text())
+            unit = self.freq_unit_combo.currentText()
+            multiplier = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}[unit]
+            freq = freq_val * multiplier
+            self.dev.set_frequency(freq)
+            self.status_label.setText(f'Set frequency to {freq_val} {unit} ({freq:.0f} Hz)')
+        except Exception as e:
+            self.status_label.setText(f'Set frequency failed: {e}')
+
+    def on_set_power(self):
+        if self.dev is None:
+            self.status_label.setText('Not connected')
+            return
+        try:
+            power = float(self.pow_edit.text())
+            self.dev.set_power(power)
+            self.status_label.setText(f'Set power to {power} dB')
+        except Exception as e:
+            self.status_label.setText(f'Set power failed: {e}')
+
+    def read_once(self):
+        if self.dev is None:
+            self.status_label.setText('Not connected')
+            return
+        try:
+            freq = self.dev.get_frequency()
+        except Exception:
+            freq = None
+        try:
+            pow = self.dev.get_power()
+        except Exception:
+            pow = None
+        self.meas_freq.setText('N/A' if freq is None else f'{freq:.2f} Hz')
+        self.meas_pow.setText('N/A' if pow is None else f'{pow:.2f} dB')
+        self.status_label.setText('Read complete')
+        
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -505,9 +594,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.configs_dir = os.path.join(os.path.dirname(__file__), 'configs')
         os.makedirs(self.configs_dir, exist_ok=True)
 
-
-
-        # Top: Scan VISA, detected devices, Save/Load Config
+        # Top: Instrument type selector, Scan VISA, detected devices, Save/Load Config
         top_row = QtWidgets.QHBoxLayout()
         self.scan_btn = QtWidgets.QPushButton('Scan VISA')
         self.scan_btn.clicked.connect(self.on_scan_instruments)
@@ -537,7 +624,78 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.tabCloseRequested.connect(self.close_tab)
         layout.addWidget(self.tabs)
 
+        # Bottom: Power Off/On All buttons
+        power_row = QtWidgets.QHBoxLayout()
+        self.poweroff_btn = QtWidgets.QPushButton('Power Off All')
+        self.poweroff_btn.clicked.connect(self.power_off_all)
+        self.poweron_btn = QtWidgets.QPushButton('Power On All')
+        self.poweron_btn.clicked.connect(self.power_on_all)
+        power_row.addWidget(self.poweroff_btn)
+        power_row.addWidget(self.poweron_btn)
+        layout.addLayout(power_row)
+
         self.statusBar().showMessage('Ready')
+
+    def power_off_all(self):
+        """Turn off outputs/inputs for all instruments in tabs."""
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, KeithleyPanel):
+                # Turn off all outputs
+                if widget.inst:
+                    for ch in (1, 2, 3):
+                        try:
+                            widget.inst.set_output(ch, False)
+                        except Exception:
+                            pass
+                widget.master_out_btn.setChecked(False)
+                widget.master_out_btn.setText('All Off')
+            elif isinstance(widget, KeysightPanel):
+                # Turn off both inputs
+                if widget.dev:
+                    for ch in (1, 2):
+                        try:
+                            widget.dev.set_input(ch, False)
+                        except Exception:
+                            pass
+                widget.input_toggle.setChecked(False)
+                widget.input_toggle.setText('Input Off')
+        self.statusBar().showMessage('All instrument outputs/inputs turned OFF', 4000)
+
+    def power_on_all(self):
+        """Turn on outputs/inputs for all instruments in tabs."""
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, KeithleyPanel):
+                # Turn on all outputs
+                if widget.inst:
+                    for ch in (1, 2, 3):
+                        try:
+                            V = float(widget.vol_edits[ch].text())
+                            I = float(widget.iam_edits[ch].text())
+                            widget.inst.set_voltage(ch, V)
+                            widget.inst.set_current(ch, I)
+                            widget.inst.set_output(ch, True)
+                        except Exception:
+                            pass
+                widget.master_out_btn.setChecked(True)
+                widget.master_out_btn.setText('All On')
+            elif isinstance(widget, KeysightPanel):
+                # Turn on both inputs
+                if widget.dev:
+                    for ch in (1, 2):
+                        try:
+                            mode = widget.mode_combo.currentText()
+                            value = float(widget.mode_value.text())
+                            widget.dev.set_mode(ch, mode)
+                            widget.dev.set_parameter(ch, mode, value)
+                            widget.dev.set_input(ch, True)
+                        except Exception:
+                            pass
+                widget.input_toggle.setChecked(True)
+                widget.input_toggle.setText('Input On')
+        self.statusBar().showMessage('All instrument outputs/inputs turned ON', 4000)
+
 
     # Do not autoload config on startup; GUI starts empty
 
@@ -621,37 +779,45 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.tabs.addTab(panel, resource)
                 panel.resource_edit.setText(resource)
                 panel.on_connect()
-                # Set channel values and output
+                # Set channel values only (do not turn on outputs)
                 for ch in (1, 2, 3):
                     ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
                     if ch_cfg:
                         panel.vol_edits[ch].setText(str(ch_cfg.get('voltage', '0')))
                         panel.iam_edits[ch].setText(str(ch_cfg.get('current', '0.03')))
-                # Set output state
-                panel.master_out_btn.setChecked(any(
-                    entry['channels'].get(str(ch), {}).get('output', False)
-                    for ch in (1, 2, 3)
-                ))
-                panel.master_out_btn.setText('All On' if panel.master_out_btn.isChecked() else 'All Off')
-                if panel.master_out_btn.isChecked():
-                    panel.on_toggle_all_outputs()
+                # Set output button state but do NOT turn on outputs
+                panel.master_out_btn.setChecked(False)
+                panel.master_out_btn.setText('All Off')
             else:
                 panel = KeysightPanel(resource)
                 self.tabs.addTab(panel, resource)
                 panel.resource_edit.setText(resource)
                 panel.on_connect()
-                # Set channel values
+                # Set channel values only (do not turn on inputs)
                 for ch in (1, 2):
                     ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
                     if ch_cfg:
                         panel.ch_select.setCurrentIndex(ch - 1)
                         panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
                         panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
-                        panel.input_toggle.setChecked(ch_cfg.get('input', False))
-                        panel.on_apply_mode()
-                        panel.on_toggle_input()
+                        panel.input_toggle.setChecked(False)
+                        panel.input_toggle.setText('Input Off')
+            # Set up tab name update callback for loaded panels
+            def update_tab_name(panel=panel, resource=resource):
+                idx = self.tabs.indexOf(panel)
+                if idx != -1:
+                    name = panel.name_edit.text().strip() if hasattr(panel, 'name_edit') else ''
+                    self.tabs.setTabText(idx, name if name else resource)
+            if hasattr(panel, 'name_edit'):
+                panel.name_edit.textChanged.connect(lambda: update_tab_name(panel, resource))
+            update_tab_name(panel, resource)
         self.statusBar().showMessage(f'Loaded config from {path}', 4000)
         self.refresh_configs_list()
+        # Set the dropdown to the currently loaded config
+        fname = os.path.basename(path)
+        idx = self.load_combo.findText(fname)
+        if idx != -1:
+            self.load_combo.setCurrentIndex(idx)
 
     def load_config_on_startup(self):
         # Load first config file in configs folder if present
@@ -661,18 +827,33 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_config(path)
 
     def add_instrument_panel(self, resource: str, label: str = None, inst_type: str = 'Keithley 2230'):
+        # Create panel
+        if inst_type.startswith('Keysight'):
+            panel = KeysightPanel(resource)
+        elif inst_type.startswith('Hittite') or inst_type.startswith('Sig Gen') or 'Hittite' in inst_type or 'Sig Gen' in inst_type:
+            panel = HittiteSigGenPanel(resource)
+        else:
+            panel = KeithleyPanel(resource)
+        # Use name from name_edit if populated, else label or resource
         tab_label = label if label else resource
+        if hasattr(panel, 'name_edit') and panel.name_edit.text().strip():
+            tab_label = panel.name_edit.text().strip()
         # avoid duplicate labels
         for i in range(self.tabs.count()):
             if self.tabs.tabText(i) == tab_label:
                 QtWidgets.QMessageBox.information(self, 'Duplicate', f'Tab "{tab_label}" already exists.')
                 return
-        if inst_type.startswith('Keysight'):
-            panel = KeysightPanel(resource)
-        else:
-            panel = KeithleyPanel(resource)
         self.tabs.addTab(panel, tab_label)
         self.tabs.setCurrentWidget(panel)
+        # Set up tab name update callback (connect after tab is added)
+        def update_tab_name(panel=panel, label=label, resource=resource):
+            idx = self.tabs.indexOf(panel)
+            if idx != -1:
+                name = panel.name_edit.text().strip()
+                self.tabs.setTabText(idx, name if name else label if label else resource)
+        if hasattr(panel, 'name_edit'):
+            panel.name_edit.textChanged.connect(lambda: update_tab_name(panel, label, resource))
+        update_tab_name(panel, label, resource)
 
     def add_instrument_by_serial(self, sn: str, inst_type: str = 'Keithley 2230'):
         sn = sn.strip()
@@ -694,10 +875,16 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, 'Scan failed', f'VISA scan failed: {e}')
             return
 
-        found = []
+        # Categorize instruments
+        categories = {
+            'Keithley 2230': [],
+            'Keysight EL34243A': [],
+            'Hittite Sig Gen': [],
+            'Unknown': []
+        }
         for res in resources:
-            # try to query IDN to classify
             inst_type = 'Unknown'
+            label = res
             try:
                 dev = rm.open_resource(res, timeout=1000)
                 idn = dev.query("*IDN?")
@@ -709,20 +896,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif 'KEYSIGHT' in lidn or 'AGILENT' in lidn or 'EL34243' in lidn.upper():
                     inst_type = 'Keysight EL34243A'
                     label = res.split('::')[3] if '::' in res else res
-                else:
-                    label = res
+                elif 'HITTITE' in lidn or 'SIG GEN' in lidn or 'HITTITE' in res.upper():
+                    inst_type = 'Hittite Sig Gen'
+                    label = res.split('::')[3] if '::' in res else res
             except Exception:
-                label = res
-            found.append((label, res, inst_type))
+                pass
+            categories.setdefault(inst_type, []).append((label, res, inst_type))
 
-        if not found:
+        total_found = sum(len(v) for v in categories.values())
+        if total_found == 0:
             QtWidgets.QMessageBox.information(self, 'No devices', 'No VISA resources found.')
             return
 
-        for label, resource, inst_type in found:
-            self.detected_combo.addItem(f'{inst_type}: {label}    ({resource})', (resource, inst_type))
+        # Add grouped items to combo box
+        for cat, items in categories.items():
+            if items:
+                self.detected_combo.addItem(f'--- {cat} ---', None)
+                for label, resource, inst_type in items:
+                    self.detected_combo.addItem(f'{inst_type}: {label}    ({resource})', (resource, inst_type))
 
-        self.statusBar().showMessage(f'Found {len(found)} device(s)', 4000)
+        self.statusBar().showMessage(f'Found {total_found} device(s)', 4000)
         # Removed self.add_input.setText; Add instrument text box no longer exists
 
     def on_add_selected_instrument(self):
