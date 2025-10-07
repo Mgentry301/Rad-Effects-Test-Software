@@ -16,800 +16,17 @@ import os
 import json
 import tempfile
 import datetime
-from functools import partial
 
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtGui import QPalette
-from PyQt5.QtCore import Qt
 import pyvisa
 
-from Instruments.keithley2230 import Keithley2230
-from Instruments.keysight_el import KeysightEL
-from Instruments.hittite_siggen import HittiteSigGen
-from Instruments.rhodeschwarz_sma import RhodeSchwarzSMA
 from GUI_Wrappers.power_sequence_builder import PowerSequenceBuilder
-
-
-class KeithleyPanel(QtWidgets.QWidget):
-    def set_tab_name_callback(self, callback):
-        self.name_edit.textChanged.connect(callback)
-    """Panel for a Keithley 2230 instrument (uses keithley2230 wrapper)."""
-    def __init__(self, resource, parent=None):
-        super().__init__(parent)
-        self.resource = resource
-        self.inst = None
-        self.latest_currents = {1: None, 2: None, 3: None}
-        # sequence/program control flags/process
-        self._sequence_abort_flag = False
-        self.program_process = None
-        self._build_ui()
-
-
-    def _build_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-
-            # Connection row
-        row = QtWidgets.QHBoxLayout()
-        self.resource_edit = QtWidgets.QLineEdit(self.resource)
-        self.connect_btn = QtWidgets.QPushButton('Connect')
-        self.connect_btn.clicked.connect(self.on_connect)
-        row.addWidget(QtWidgets.QLabel('VISA Resource:'))
-        row.addWidget(self.resource_edit)
-        row.addWidget(self.connect_btn)
-        layout.addLayout(row)
-
-        # Name box row
-        name_row = QtWidgets.QHBoxLayout()
-        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
-        self.name_edit = QtWidgets.QLineEdit()
-        name_row.addWidget(self.name_edit)
-        layout.addLayout(name_row)
-
-        # Channel setpoints
-        self.vol_edits = {}
-        self.iam_edits = {}
-        ch_group = QtWidgets.QGroupBox('Channel Setpoints')
-        ch_layout = QtWidgets.QGridLayout()
-        ch_layout.addWidget(QtWidgets.QLabel('Chan'), 0, 0)
-        ch_layout.addWidget(QtWidgets.QLabel('V (V)'), 0, 1)
-        ch_layout.addWidget(QtWidgets.QLabel('I (A)'), 0, 2)
-        ch_layout.addWidget(QtWidgets.QLabel('Action'), 0, 3)
-        for i in (1, 2, 3):
-            ch_layout.addWidget(QtWidgets.QLabel(str(i)), i, 0)
-            v_edit = QtWidgets.QLineEdit('0')
-            i_edit = QtWidgets.QLineEdit('0.03')
-            set_btn = QtWidgets.QPushButton('Set')
-            set_btn.clicked.connect(partial(self.on_set_channel, i))
-            self.vol_edits[i] = v_edit
-            self.iam_edits[i] = i_edit
-            ch_layout.addWidget(v_edit, i, 1)
-            ch_layout.addWidget(i_edit, i, 2)
-            ch_layout.addWidget(set_btn, i, 3)
-        ch_group.setLayout(ch_layout)
-        layout.addWidget(ch_group)
-
-        # Large numeric current displays
-        stats_group = QtWidgets.QGroupBox('Live Currents (Read Now)')
-        stats_layout = QtWidgets.QGridLayout()
-        self.current_value_labels = {}
-        for i in (1, 2, 3):
-            lbl = QtWidgets.QLabel(f'Ch{i}:')
-            val = QtWidgets.QLabel('-')
-            val.setMinimumWidth(180)
-            val.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-            font = val.font()
-            font.setPointSize(20)
-            font.setBold(True)
-            val.setFont(font)
-            stats_layout.addWidget(lbl, i - 1, 0)
-            stats_layout.addWidget(val, i - 1, 1)
-            self.current_value_labels[i] = val
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # Bottom controls
-        bottom = QtWidgets.QHBoxLayout()
-        self.read_btn = QtWidgets.QPushButton('Read Now')
-        self.read_btn.clicked.connect(self.read_once)
-        self.master_out_btn = QtWidgets.QPushButton('All Off')
-        self.master_out_btn.setCheckable(True)
-        self.master_out_btn.clicked.connect(self.on_toggle_all_outputs)
-        self._update_master_out_btn_color(False)
-        bottom.addWidget(self.read_btn)
-        bottom.addWidget(self.master_out_btn)
-        layout.addLayout(bottom)
-
-        self.status_label = QtWidgets.QLabel('')
-        layout.addWidget(self.status_label)
-
-    def close(self):
-        try:
-            if self.inst is not None:
-                self.inst.close()
-        except Exception:
-            pass
-
-    def on_connect(self):
-        res = self.resource_edit.text().strip()
-        if not res:
-            self.status_label.setText('Enter VISA resource string or serial number')
-            return
-        try:
-            inst = Keithley2230(res)
-            inst.open()
-            idn = inst.get_identification()
-            self.inst = inst
-            self.status_label.setText(f'Connected: {idn.strip()}')
-
-            # populate setpoints and read output states
-            any_on = False
-            for ch in (1, 2, 3):
-                try:
-                    v = self.inst.get_voltage_setpoint(ch)
-                except Exception:
-                    v = None
-                try:
-                    i = self.inst.get_current_setpoint(ch)
-                except Exception:
-                    i = None
-                try:
-                    out = self.inst.get_output_state(ch)
-                except Exception:
-                    out = False
-
-                if v is not None:
-                    try:
-                        self.vol_edits[ch].setText(str(v))
-                    except Exception:
-                        pass
-                if i is not None:
-                    try:
-                        self.iam_edits[ch].setText(str(i))
-                    except Exception:
-                        pass
-                if out:
-                    any_on = True
-
-            self.master_out_btn.setChecked(any_on)
-            self.master_out_btn.setText('All On' if any_on else 'All Off')
-            self._update_master_out_btn_color(any_on)
-
-        except Exception as e:
-            self.status_label.setText(f'Connect failed: {e}')
-
-    def on_set_channel(self, ch: int):
-        if self.inst is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            V = float(self.vol_edits[ch].text())
-            I = float(self.iam_edits[ch].text())
-            self.inst.set_voltage(ch, V)
-            self.inst.set_current(ch, I)
-            self.status_label.setText(f'Set ch{ch} V={V} I={I}')
-        except Exception as e:
-            self.status_label.setText(f'Set failed: {e}')
-
-    def on_toggle_all_outputs(self):
-        if self.inst is None:
-            self.status_label.setText('Not connected')
-            self.master_out_btn.setChecked(False)
-            return
-        on = self.master_out_btn.isChecked()
-        try:
-            if on:
-                for ch in (1, 2, 3):
-                    try:
-                        V = float(self.vol_edits[ch].text())
-                        I = float(self.iam_edits[ch].text())
-                        self.inst.set_voltage(ch, V)
-                        self.inst.set_current(ch, I)
-                    except Exception as e_set:
-                        self.master_out_btn.setChecked(False)
-                        self.master_out_btn.setText('All Off')
-                        self.status_label.setText(f'Failed to apply setpoints for ch{ch}: {e_set}')
-                        return
-                for ch in (1, 2, 3):
-                    self.inst.set_output(ch, True)
-                self.master_out_btn.setText('All On')
-                self._update_master_out_btn_color(True)
-                self.status_label.setText('All channels output ON')
-            else:
-                for ch in (1, 2, 3):
-                    try:
-                        self.inst.set_output(ch, False)
-                    except Exception:
-                        pass
-                self.master_out_btn.setText('All Off')
-                self._update_master_out_btn_color(False)
-                self.status_label.setText('All channels output OFF')
-        except Exception as e:
-            self.master_out_btn.setChecked(not on)
-            self.master_out_btn.setText('All On' if not on else 'All Off')
-            self._update_master_out_btn_color(not on)
-            self.status_label.setText(f'All-output toggle failed: {e}')
-
-    def read_once(self):
-        if self.inst is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            for ch in (1, 2, 3):
-                try:
-                    v = self.inst.measure_current(ch)
-                except Exception:
-                    v = None
-                self.latest_currents[ch] = v
-                lbl = self.current_value_labels.get(ch)
-                if lbl is None:
-                    continue
-                if v is None:
-                    txt = 'N/A'
-                else:
-                    try:
-                        txt = f'{v:.6f} A'
-                    except Exception:
-                        txt = str(v)
-                lbl.setText(txt)
-            self.status_label.setText('Read complete')
-        except Exception as e:
-            self.status_label.setText(f'Read failed: {e}')
-
-    def _update_master_out_btn_color(self, on):
-        if on:
-            self.master_out_btn.setStyleSheet('background-color: #4CAF50; color: white;')
-        else:
-            self.master_out_btn.setStyleSheet('background-color: #F44336; color: white;')
-
-
-class KeysightPanel(QtWidgets.QWidget):
-    def set_tab_name_callback(self, callback):
-        self.name_edit.textChanged.connect(callback)
-    """Panel for Keysight EL34243A-style dual-input electronic load."""
-    def __init__(self, resource, parent=None):
-        super().__init__(parent)
-        self.resource = resource
-        self.dev = None  # KeysightEL instance
-        self._build_ui()
-
-
-    def _build_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-
-        # Connection row
-        row = QtWidgets.QHBoxLayout()
-        self.resource_edit = QtWidgets.QLineEdit(self.resource)
-        self.connect_btn = QtWidgets.QPushButton('Connect')
-        self.connect_btn.clicked.connect(self.on_connect)
-        row.addWidget(QtWidgets.QLabel('VISA Resource:'))
-        row.addWidget(self.resource_edit)
-        row.addWidget(self.connect_btn)
-        layout.addLayout(row)
-
-        # Name box row
-        name_row = QtWidgets.QHBoxLayout()
-        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
-        self.name_edit = QtWidgets.QLineEdit()
-        name_row.addWidget(self.name_edit)
-        layout.addLayout(name_row)
-
-        # Channel selector (EL34243A has two inputs)
-        ch_row = QtWidgets.QHBoxLayout()
-        ch_row.addWidget(QtWidgets.QLabel('Channel:'))
-        self.ch_select = QtWidgets.QComboBox()
-        self.ch_select.addItems(['1', '2'])
-        ch_row.addWidget(self.ch_select)
-        # Add enable/disable checkboxes for each channel
-        self.ch_enabled = {1: QtWidgets.QCheckBox('Enable Ch 1'), 2: QtWidgets.QCheckBox('Enable Ch 2')}
-        self.ch_enabled[1].setChecked(True)
-        self.ch_enabled[2].setChecked(True)
-        ch_row.addWidget(self.ch_enabled[1])
-        ch_row.addWidget(self.ch_enabled[2])
-        self.ch_enabled[1].stateChanged.connect(lambda _: self._update_input_toggle_color(self.ch_enabled[1].isChecked()))
-        self.ch_enabled[2].stateChanged.connect(lambda _: self._update_input_toggle_color(self.ch_enabled[2].isChecked()))
-        layout.addLayout(ch_row)
-
-        # On/Off control
-        inp_row = QtWidgets.QHBoxLayout()
-        self.input_toggle = QtWidgets.QPushButton('Input Off')
-        self.input_toggle.setCheckable(True)
-        self.input_toggle.clicked.connect(self.on_toggle_input)
-        self._update_input_toggle_color(False)
-        inp_row.addWidget(self.input_toggle)
-        layout.addLayout(inp_row)
-
-        # Mode selection and parameter
-        mode_group = QtWidgets.QGroupBox('Mode and Parameter')
-        mlay = QtWidgets.QHBoxLayout()
-        mlay.addWidget(QtWidgets.QLabel('Mode:'))
-        self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(['CC', 'CV', 'CR', 'CP'])
-        mlay.addWidget(self.mode_combo)
-        mlay.addWidget(QtWidgets.QLabel('Value:'))
-        self.mode_value = QtWidgets.QLineEdit('0.1')
-        mlay.addWidget(self.mode_value)
-        self.mode_apply = QtWidgets.QPushButton('Apply')
-        self.mode_apply.clicked.connect(self.on_apply_mode)
-        mlay.addWidget(self.mode_apply)
-        mode_group.setLayout(mlay)
-        layout.addWidget(mode_group)
-
-        # Readouts
-        stats_group = QtWidgets.QGroupBox('Measurements (Read Now)')
-        stats_layout = QtWidgets.QGridLayout()
-        self.meas_voltage = QtWidgets.QLabel('-')
-        self.meas_current = QtWidgets.QLabel('-')
-        font = self.meas_voltage.font()
-        font.setPointSize(16)
-        font.setBold(True)
-        self.meas_voltage.setFont(font)
-        self.meas_current.setFont(font)
-        stats_layout.addWidget(QtWidgets.QLabel('Voltage:'), 0, 0)
-        stats_layout.addWidget(self.meas_voltage, 0, 1)
-        stats_layout.addWidget(QtWidgets.QLabel('Current:'), 1, 0)
-        stats_layout.addWidget(self.meas_current, 1, 1)
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # Bottom controls
-        bottom = QtWidgets.QHBoxLayout()
-        self.read_btn = QtWidgets.QPushButton('Read Now')
-        self.read_btn.clicked.connect(self.read_once)
-        bottom.addWidget(self.read_btn)
-        layout.addLayout(bottom)
-
-        self.status_label = QtWidgets.QLabel('')
-        layout.addWidget(self.status_label)
-
-    def close(self):
-        try:
-            if self.dev is not None:
-                self.dev.close()
-        except Exception:
-            pass
-
-    def on_connect(self):
-        res = self.resource_edit.text().strip()
-        if not res:
-            self.status_label.setText('Enter VISA resource or SN')
-            return
-        try:
-            dev = KeysightEL(res)
-            dev.open()
-            idn = dev.get_identification()
-            self.dev = dev
-            self.status_label.setText(f'Connected: {idn.strip()}')
-            # try to read input state for selected channel
-            ch = int(self.ch_select.currentText())
-            try:
-                on = self.dev.get_input_state(ch)
-                if not self.ch_enabled[ch].isChecked():
-                    on = False
-                self.input_toggle.setChecked(on)
-                self.input_toggle.setText('Input On' if on else 'Input Off')
-                self._update_input_toggle_color(on)
-                self._update_input_toggle()
-            except Exception:
-                pass
-        except Exception as e:
-            self.status_label.setText(f'Connect failed: {e}')
-
-    def on_toggle_input(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            self.input_toggle.setChecked(False)
-            return
-        ch = int(self.ch_select.currentText())
-        if not self.ch_enabled[ch].isChecked():
-            self.input_toggle.setChecked(False)
-            self.input_toggle.setText('Input Off')
-            self.status_label.setText(f'Channel {ch} is disabled')
-            return
-        on = self.input_toggle.isChecked()
-        try:
-            self.dev.set_input(ch, on)
-            self.input_toggle.setText('Input On' if on else 'Input Off')
-            self._update_input_toggle_color(on)
-            self.status_label.setText(f'Channel {ch} {"enabled" if on else "disabled"}')
-        except Exception as e:
-            self.input_toggle.setChecked(not on)
-            self._update_input_toggle_color(not on)
-            self.status_label.setText(f'Failed to toggle input: {e}')
-
-    def on_apply_mode(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        ch = int(self.ch_select.currentText())
-        mode = self.mode_combo.currentText()
-        try:
-            value = float(self.mode_value.text())
-        except Exception:
-            self.status_label.setText('Invalid numeric value')
-            return
-        try:
-            self.dev.set_mode(ch, mode)
-            self.dev.set_parameter(ch, mode, value)
-            self.status_label.setText(f'Applied {mode} {value} on ch{ch}')
-        except Exception as e:
-            self.status_label.setText(f'Apply failed: {e}')
-
-    def read_once(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        ch = int(self.ch_select.currentText())
-        try:
-            v = self.dev.measure_voltage(ch)
-        except Exception:
-            v = None
-        try:
-            i = self.dev.measure_current(ch)
-        except Exception:
-            i = None
-        self.meas_voltage.setText('N/A' if v is None else f'{v:.6f} V')
-        self.meas_current.setText('N/A' if i is None else f'{i:.6f} A')
-        self.status_label.setText('Read complete')
-
-    def _update_input_toggle_color(self, on):
-        if on:
-            self.input_toggle.setStyleSheet('background-color: #4CAF50; color: white;')
-        else:
-            self.input_toggle.setStyleSheet('background-color: #F44336; color: white;')
-
-
-class HittiteSigGenPanel(QtWidgets.QWidget):
-    def on_toggle_output(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            self.output_btn.setChecked(False)
-            self._update_output_btn_color(False)
-            return
-        on = self.output_btn.isChecked()
-        try:
-            self.dev.set_output(on)
-            self.output_btn.setText('Output On' if on else 'Output Off')
-            self._update_output_btn_color(on)
-            self.status_label.setText(f'Output {"ON" if on else "OFF"}')
-        except Exception as e:
-            self.status_label.setText(f'Failed to set output: {e}')
-            self.output_btn.setChecked(not on)
-            self._update_output_btn_color(not on)
-    def set_tab_name_callback(self, callback):
-        self.name_edit.textChanged.connect(callback)
-    """Panel for Hittite Signal Generator (USB)."""
-    def __init__(self, resource, parent=None):
-        super().__init__(parent)
-        self.resource = resource
-        self.dev = None  # HittiteSigGen instance
-        self._build_ui()
-
-    def _build_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-
-            # Connection row
-        row = QtWidgets.QHBoxLayout()
-        self.resource_edit = QtWidgets.QLineEdit(self.resource)
-        self.connect_btn = QtWidgets.QPushButton('Connect')
-        self.connect_btn.clicked.connect(self.on_connect)
-        row.addWidget(QtWidgets.QLabel('VISA Resource:'))
-        row.addWidget(self.resource_edit)
-        row.addWidget(self.connect_btn)
-        layout.addLayout(row)
-
-        # Name box row
-        name_row = QtWidgets.QHBoxLayout()
-        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
-        self.name_edit = QtWidgets.QLineEdit()
-        name_row.addWidget(self.name_edit)
-        layout.addLayout(name_row)
-
-        # Frequency control
-        freq_row = QtWidgets.QHBoxLayout()
-        freq_row.addWidget(QtWidgets.QLabel('Frequency:'))
-        self.freq_edit = QtWidgets.QLineEdit('1')
-        freq_row.addWidget(self.freq_edit)
-        self.freq_unit_combo = QtWidgets.QComboBox()
-        self.freq_unit_combo.addItems(['GHz', 'MHz', 'KHz', 'Hz'])
-        self.freq_unit_combo.setCurrentIndex(0)
-        freq_row.addWidget(self.freq_unit_combo)
-        self.freq_set_btn = QtWidgets.QPushButton('Set Frequency')
-        self.freq_set_btn.clicked.connect(self.on_set_frequency)
-        freq_row.addWidget(self.freq_set_btn)
-        layout.addLayout(freq_row)
-
-        # Power control
-        pow_row = QtWidgets.QHBoxLayout()
-        pow_row.addWidget(QtWidgets.QLabel('Power (dB):'))
-        self.pow_edit = QtWidgets.QLineEdit('0')
-        pow_row.addWidget(self.pow_edit)
-        self.pow_set_btn = QtWidgets.QPushButton('Set Power')
-        self.pow_set_btn.clicked.connect(self.on_set_power)
-        pow_row.addWidget(self.pow_set_btn)
-        layout.addLayout(pow_row)
-
-        # Readouts
-        stats_group = QtWidgets.QGroupBox('Current Settings')
-        stats_layout = QtWidgets.QGridLayout()
-        self.meas_freq = QtWidgets.QLabel('-')
-        self.meas_pow = QtWidgets.QLabel('-')
-        font = self.meas_freq.font()
-        font.setPointSize(16)
-        font.setBold(True)
-        self.meas_freq.setFont(font)
-        self.meas_pow.setFont(font)
-        stats_layout.addWidget(QtWidgets.QLabel('Frequency:'), 0, 0)
-        stats_layout.addWidget(self.meas_freq, 0, 1)
-        stats_layout.addWidget(QtWidgets.QLabel('Power:'), 1, 0)
-        stats_layout.addWidget(self.meas_pow, 1, 1)
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # Bottom controls
-        bottom = QtWidgets.QHBoxLayout()
-        self.read_btn = QtWidgets.QPushButton('Read Now')
-        self.read_btn.clicked.connect(self.read_once)
-        bottom.addWidget(self.read_btn)
-        layout.addLayout(bottom)
-
-        self.status_label = QtWidgets.QLabel('')
-        layout.addWidget(self.status_label)
-
-        # Output On/Off button at the bottom
-        out_row = QtWidgets.QHBoxLayout()
-        self.output_btn = QtWidgets.QPushButton('Output Off')
-        self.output_btn.setCheckable(True)
-        self.output_btn.setChecked(False)
-        self.output_btn.clicked.connect(self.on_toggle_output)
-        self._update_output_btn_color(False)
-        out_row.addWidget(self.output_btn)
-        layout.addLayout(out_row)
-
-
-    def close(self):
-        try:
-            if self.dev is not None:
-                self.dev.close()
-        except Exception:
-            pass
-
-    def on_connect(self):
-        res = self.resource_edit.text().strip()
-        if not res:
-            self.status_label.setText('Enter VISA resource or SN')
-            return
-        try:
-            dev = HittiteSigGen(res)
-            dev.open()
-            idn = dev.get_identification()
-            self.dev = dev
-            self.status_label.setText(f'Connected: {idn.strip()}')
-        except Exception as e:
-            self.status_label.setText(f'Connect failed: {e}')
-
-    def on_set_frequency(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            freq_val = float(self.freq_edit.text())
-            unit = self.freq_unit_combo.currentText()
-            multiplier = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}[unit]
-            freq = freq_val * multiplier
-            self.dev.set_frequency(freq)
-            self.status_label.setText(f'Set frequency to {freq_val} {unit} ({freq:.0f} Hz)')
-        except Exception as e:
-            self.status_label.setText(f'Set frequency failed: {e}')
-
-    def on_set_power(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            power = float(self.pow_edit.text())
-            self.dev.set_power(power)
-            self.status_label.setText(f'Set power to {power} dB')
-        except Exception as e:
-            self.status_label.setText(f'Set power failed: {e}')
-
-    def read_once(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            freq = self.dev.get_frequency()
-        except Exception:
-            freq = None
-        try:
-            pow = self.dev.get_power()
-        except Exception:
-            pow = None
-        self.meas_freq.setText('N/A' if freq is None else f'{freq:.2f} Hz')
-        self.meas_pow.setText('N/A' if pow is None else f'{pow:.2f} dB')
-        self.status_label.setText('Read complete')
-        
-    def _update_output_btn_color(self, on):
-        if on:
-            self.output_btn.setStyleSheet('background-color: #4CAF50; color: white;')
-        else:
-            self.output_btn.setStyleSheet('background-color: #F44336; color: white;')
-        
-class RhodeSchwarzSMAPanel(QtWidgets.QWidget):
-    def set_tab_name_callback(self, callback):
-        self.name_edit.textChanged.connect(callback)
-    """Panel for Rhode & Schwarz SMA Signal Generator."""
-    def __init__(self, resource, parent=None):
-        super().__init__(parent)
-        self.resource = resource
-        self.dev = None  # RhodeSchwarzSMA instance
-        self._build_ui()
-
-    def _build_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-
-        # Connection row
-        row = QtWidgets.QHBoxLayout()
-        self.resource_edit = QtWidgets.QLineEdit(self.resource)
-        self.connect_btn = QtWidgets.QPushButton('Connect')
-        self.connect_btn.clicked.connect(self.on_connect)
-        row.addWidget(QtWidgets.QLabel('VISA Resource:'))
-        row.addWidget(self.resource_edit)
-        row.addWidget(self.connect_btn)
-        layout.addLayout(row)
-
-        # Name box row
-        name_row = QtWidgets.QHBoxLayout()
-        name_row.addWidget(QtWidgets.QLabel('Name (tab label):'))
-        self.name_edit = QtWidgets.QLineEdit()
-        name_row.addWidget(self.name_edit)
-        layout.addLayout(name_row)
-
-        # Frequency control
-        freq_row = QtWidgets.QHBoxLayout()
-        freq_row.addWidget(QtWidgets.QLabel('Frequency:'))
-        self.freq_edit = QtWidgets.QLineEdit('1')
-        freq_row.addWidget(self.freq_edit)
-        self.freq_unit_combo = QtWidgets.QComboBox()
-        self.freq_unit_combo.addItems(['GHz', 'MHz', 'KHz', 'Hz'])
-        self.freq_unit_combo.setCurrentIndex(0)
-        freq_row.addWidget(self.freq_unit_combo)
-        self.freq_set_btn = QtWidgets.QPushButton('Set Frequency')
-        self.freq_set_btn.clicked.connect(self.on_set_frequency)
-        freq_row.addWidget(self.freq_set_btn)
-        layout.addLayout(freq_row)
-
-        # Power control
-        pow_row = QtWidgets.QHBoxLayout()
-        pow_row.addWidget(QtWidgets.QLabel('Power (dBm):'))
-        self.pow_edit = QtWidgets.QLineEdit('0')
-        pow_row.addWidget(self.pow_edit)
-        self.pow_set_btn = QtWidgets.QPushButton('Set Power')
-        self.pow_set_btn.clicked.connect(self.on_set_power)
-        pow_row.addWidget(self.pow_set_btn)
-        layout.addLayout(pow_row)
-
-        # Readouts
-        stats_group = QtWidgets.QGroupBox('Current Settings')
-        stats_layout = QtWidgets.QGridLayout()
-        self.meas_freq = QtWidgets.QLabel('-')
-        self.meas_pow = QtWidgets.QLabel('-')
-        font = self.meas_freq.font()
-        font.setPointSize(16)
-        font.setBold(True)
-        self.meas_freq.setFont(font)
-        self.meas_pow.setFont(font)
-        stats_layout.addWidget(QtWidgets.QLabel('Frequency:'), 0, 0)
-        stats_layout.addWidget(self.meas_freq, 0, 1)
-        stats_layout.addWidget(QtWidgets.QLabel('Power:'), 1, 0)
-        stats_layout.addWidget(self.meas_pow, 1, 1)
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # Bottom controls
-        bottom = QtWidgets.QHBoxLayout()
-        self.read_btn = QtWidgets.QPushButton('Read Now')
-        self.read_btn.clicked.connect(self.read_once)
-        bottom.addWidget(self.read_btn)
-        layout.addLayout(bottom)
-
-        self.status_label = QtWidgets.QLabel('')
-        layout.addWidget(self.status_label)
-
-        # Output On/Off button at the bottom
-        out_row = QtWidgets.QHBoxLayout()
-        self.output_btn = QtWidgets.QPushButton('Output Off')
-        self.output_btn.setCheckable(True)
-        self.output_btn.setChecked(False)
-        self.output_btn.clicked.connect(self.on_toggle_output)
-        self._update_output_btn_color(False)
-        out_row.addWidget(self.output_btn)
-        layout.addLayout(out_row)
-
-    def close(self):
-        try:
-            if self.dev is not None:
-                self.dev.close()
-        except Exception:
-            pass
-
-    def on_connect(self):
-        res = self.resource_edit.text().strip()
-        if not res:
-            self.status_label.setText('Enter VISA resource or SN')
-            return
-        try:
-            dev = RhodeSchwarzSMA(res)
-            dev.open()
-            idn = dev.get_identification()
-            self.dev = dev
-            self.status_label.setText(f'Connected: {idn.strip()}')
-        except Exception as e:
-            self.status_label.setText(f'Connect failed: {e}')
-
-    def on_set_frequency(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            freq_val = float(self.freq_edit.text())
-            unit = self.freq_unit_combo.currentText()
-            multiplier = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}[unit]
-            freq = freq_val * multiplier
-            self.dev.set_frequency(freq)
-            self.status_label.setText(f'Set frequency to {freq_val} {unit} ({freq:.0f} Hz)')
-        except Exception as e:
-            self.status_label.setText(f'Set frequency failed: {e}')
-
-    def on_set_power(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            power = float(self.pow_edit.text())
-            self.dev.set_power(power)
-            self.status_label.setText(f'Set power to {power} dBm')
-        except Exception as e:
-            self.status_label.setText(f'Set power failed: {e}')
-
-    def read_once(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            return
-        try:
-            freq = self.dev.get_frequency()
-        except Exception:
-            freq = None
-        try:
-            pow = self.dev.get_power()
-        except Exception:
-            pow = None
-        self.meas_freq.setText('N/A' if freq is None else f'{freq:.2f} Hz')
-        self.meas_pow.setText('N/A' if pow is None else f'{pow:.2f} dBm')
-        self.status_label.setText('Read complete')
-
-    def on_toggle_output(self):
-        if self.dev is None:
-            self.status_label.setText('Not connected')
-            self.output_btn.setChecked(False)
-            self._update_output_btn_color(False)
-            return
-        on = self.output_btn.isChecked()
-        try:
-            self.dev.set_output(on)
-            self.output_btn.setText('Output On' if on else 'Output Off')
-            self._update_output_btn_color(on)
-            self.status_label.setText(f'Output {"ON" if on else "OFF"}')
-        except Exception as e:
-            self.status_label.setText(f'Failed to set output: {e}')
-            self.output_btn.setChecked(not on)
-            self._update_output_btn_color(not on)
-
-    def _update_output_btn_color(self, on):
-        if on:
-            self.output_btn.setStyleSheet('background-color: #4CAF50; color: white;')
-        else:
-            self.output_btn.setStyleSheet('background-color: #F44336; color: white;')
-
+from GUI_Wrappers.keithley_panel import KeithleyPanel
+from GUI_Wrappers.keysightEL_panel import KeysightELPanel
+from GUI_Wrappers.keysight_e36233a_panel import KeysightE36233APanel
+from GUI_Wrappers.hittite_siggen_panel import HittiteSigGenPanel
+from GUI_Wrappers.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
+from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
     # helper to format timestamps for logs
@@ -875,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     panel.output_btn.setText('Output Off')
                 except Exception:
                     pass
-            elif isinstance(panel, KeysightPanel):
+            elif isinstance(panel, KeysightELPanel):
                 if getattr(panel, 'dev', None):
                     try:
                         for ch in (1, 2):
@@ -893,6 +110,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
             elif isinstance(panel, RhodeSchwarzSMAPanel):
+                if getattr(panel, 'dev', None):
+                    try:
+                        panel.dev.set_output(False)
+                    except Exception:
+                        pass
+                try:
+                    panel.output_btn.setChecked(False)
+                    panel.output_btn.setText('Output Off')
+                except Exception:
+                    pass
+            elif isinstance(panel, FieldFoxSAPanel):
                 if getattr(panel, 'dev', None):
                     try:
                         panel.dev.set_output(False)
@@ -938,10 +166,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     t = 'Keithley 2230'
                 elif 'KEYSIGHT' in lidn or 'AGILENT' in lidn or 'EL34243' in lidn.upper():
                     t = 'Keysight EL34243A'
+                elif 'KEYSIGHT' in lidn or 'E36233A' in lidn.upper():
+                    t = 'Keysight E36233A'
                 elif 'HITTITE' in lidn or 'SIG GEN' in lidn or 'HITTITE' in res.upper():
                     t = 'Hittite Sig Gen'
                 elif 'ROHDE' in lidn or 'SCHWARZ' in lidn or 'SMA' in lidn:
                     t = 'RhodeSchwarz SMA'
+                elif 'FIELDFOX' in lidn or 'FIELD FOX' in lidn:
+                    t = 'Keysight FieldFox'
                 # If the type hint matches or the saved_resource contains a serial-like pattern, accept
                 if inst_type_hint and inst_type_hint.startswith(t.split()[0]):
                     found.append((label, res, t))
@@ -985,7 +217,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 widget.status_label.setText('Output ON')
                             except Exception as e:
                                 widget.status_label.setText(f'Failed to set output: {e}')
-                    elif isinstance(widget, KeysightPanel):
+                    elif isinstance(widget, KeysightELPanel):
                         if widget.dev:
                             for ch in (1, 2):
                                 if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
@@ -1001,6 +233,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             widget.input_toggle.setChecked(True)
                             widget.input_toggle.setText('Input On')
                     elif isinstance(widget, RhodeSchwarzSMAPanel):
+                        if widget.dev:
+                            try:
+                                widget.dev.set_output(True)
+                                widget.output_btn.setChecked(True)
+                                widget.output_btn.setText('Output On')
+                                widget.status_label.setText('Output ON')
+                            except Exception as e:
+                                widget.status_label.setText(f'Failed to set output: {e}')
+                    elif isinstance(widget, FieldFoxSAPanel):
                         if widget.dev:
                             try:
                                 widget.dev.set_output(True)
@@ -1040,7 +281,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 widget.status_label.setText('Output OFF')
                             except Exception as e:
                                 widget.status_label.setText(f'Failed to set output: {e}')
-                    elif isinstance(widget, KeysightPanel):
+                    elif isinstance(widget, KeysightELPanel):
                         if widget.dev:
                             for ch in (1, 2):
                                 if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
@@ -1052,6 +293,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             widget.input_toggle.setChecked(False)
                             widget.input_toggle.setText('Input Off')
                     elif isinstance(widget, RhodeSchwarzSMAPanel):
+                        if widget.dev:
+                            try:
+                                widget.dev.set_output(False)
+                                widget.output_btn.setChecked(False)
+                                widget.output_btn.setText('Output Off')
+                                widget.status_label.setText('Output OFF')
+                            except Exception as e:
+                                widget.status_label.setText(f'Failed to set output: {e}')
+                    elif isinstance(widget, FieldFoxSAPanel):
                         if widget.dev:
                             try:
                                 widget.dev.set_output(False)
@@ -1318,7 +568,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         widget.status_label.setText('Output OFF')
                     except Exception as e:
                         widget.status_label.setText(f'Failed to set output: {e}')
-            elif isinstance(widget, KeysightPanel):
+            elif isinstance(widget, KeysightELPanel):
                 # Turn off both inputs
                 if widget.dev:
                     for ch in (1, 2):
@@ -1331,6 +581,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 widget.input_toggle.setChecked(False)
                 widget.input_toggle.setText('Input Off')
             elif isinstance(widget, RhodeSchwarzSMAPanel):
+                # Turn off output
+                if widget.dev:
+                    try:
+                        widget.dev.set_output(False)
+                        widget.output_btn.setChecked(False)
+                        widget.output_btn.setText('Output Off')
+                        widget.status_label.setText('Output OFF')
+                    except Exception as e:
+                        widget.status_label.setText(f'Failed to set output: {e}')
+            elif isinstance(widget, FieldFoxSAPanel):
                 # Turn off output
                 if widget.dev:
                     try:
@@ -1374,7 +634,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         widget.status_label.setText('Output ON')
                     except Exception as e:
                         widget.status_label.setText(f'Failed to set output: {e}')
-            elif isinstance(widget, KeysightPanel):
+            elif isinstance(widget, KeysightELPanel):
                 # Turn on both inputs
                 if widget.dev:
                     for ch in (1, 2):
@@ -1391,6 +651,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 widget.input_toggle.setChecked(True)
                 widget.input_toggle.setText('Input On')
             elif isinstance(widget, RhodeSchwarzSMAPanel):
+                # Turn on output
+                if widget.dev:
+                    try:
+                        widget.dev.set_output(True)
+                        widget.output_btn.setChecked(True)
+                        widget.output_btn.setText('Output On')
+                        widget.status_label.setText('Output ON')
+                    except Exception as e:
+                        widget.status_label.setText(f'Failed to set output: {e}')
+            elif isinstance(widget, FieldFoxSAPanel):
                 # Turn on output
                 if widget.dev:
                     try:
@@ -1612,7 +882,36 @@ class MainWindow(QtWidgets.QMainWindow):
                 panel.master_out_btn.setChecked(False)
                 panel.master_out_btn.setText('All Off')
             elif inst_type == 'Keysight EL34243A':
-                panel = KeysightPanel(resource)
+                panel = KeysightELPanel(resource)
+                self.tabs.addTab(panel, resource)
+                used_resources.add(resource)
+                panel.resource_edit.setText(resource)
+                # restore saved name if present
+                try:
+                    name_val = entry.get('name') if isinstance(entry, dict) else None
+                    if name_val and hasattr(panel, 'name_edit'):
+                        panel.name_edit.setText(name_val)
+                except Exception:
+                    pass
+                panel.on_connect()
+                # Set channel values and apply them to instrument
+                for ch in (1, 2):
+                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
+                    if ch_cfg:
+                        panel.ch_select.setCurrentIndex(ch - 1)
+                        panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
+                        panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
+                        if panel.dev:
+                            try:
+                                panel.dev.set_mode(ch, panel.mode_combo.currentText())
+                                panel.dev.set_parameter(ch, panel.mode_combo.currentText(), float(panel.mode_value.text()))
+                            except Exception:
+                                pass
+                        panel.input_toggle.setChecked(False)
+                        panel.input_toggle.setText('Input Off')
+                    # end of per-panel setup
+            elif inst_type == 'Keysight E36233A':
+                panel = KeysightE36233APanel(resource)
                 self.tabs.addTab(panel, resource)
                 used_resources.add(resource)
                 panel.resource_edit.setText(resource)
@@ -1655,6 +954,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 panel.on_connect()
             elif inst_type == 'RhodeSchwarz SMA':
                 panel = RhodeSchwarzSMAPanel(resource)
+                self.tabs.addTab(panel, resource)
+                used_resources.add(resource)
+                panel.resource_edit.setText(resource)
+                # restore saved name if present
+                try:
+                    name_val = entry.get('name') if isinstance(entry, dict) else None
+                    if name_val and hasattr(panel, 'name_edit'):
+                        panel.name_edit.setText(name_val)
+                except Exception:
+                    pass
+                panel.on_connect()
+                # end of per-panel setup
+            elif inst_type == 'Keysight FieldFox':
+                panel = FieldFoxSAPanel(resource)
                 self.tabs.addTab(panel, resource)
                 used_resources.add(resource)
                 panel.resource_edit.setText(resource)
@@ -1720,8 +1033,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def add_instrument_panel(self, resource: str, label: str = None, inst_type: str = 'Keithley 2230'):
         # Create panel
-        if inst_type.startswith('Keysight'):
-            panel = KeysightPanel(resource)
+        if inst_type.startswith('Keysight EL34243A'):
+            panel = KeysightELPanel(resource)
+        elif inst_type.startswith('Keysight E36233A'):
+            panel = KeysightE36233APanel(resource)
+        elif inst_type.startswith('Keysight FieldFox') or 'FieldFox' in inst_type:
+            panel = FieldFoxSAPanel(resource)
         elif inst_type.startswith('Hittite') or inst_type.startswith('Sig Gen') or 'Hittite' in inst_type or 'Sig Gen' in inst_type:
             panel = HittiteSigGenPanel(resource)
         elif inst_type.startswith('Rhode') or 'Rhode' in inst_type or 'Schwarz' in inst_type or 'SMA' in inst_type:
@@ -1809,55 +1126,53 @@ class MainWindow(QtWidgets.QMainWindow):
         """Scan VISA resources and populate detected_combo with resources. Attempt to classify type by *IDN?"""
         self.detected_combo.clear()
         try:
+            import pyvisa
             rm = pyvisa.ResourceManager()
-            resources = rm.list_resources()
+            resources = list(rm.list_resources())
         except Exception as e:
-            QtWidgets.QMessageBox.warning(self, 'Scan failed', f'VISA scan failed: {e}')
-            return
+            resources = []
 
         # Categorize instruments
         categories = {
             'Keithley 2230': [],
             'Keysight EL34243A': [],
+            'Keysight E36233A': [],
             'Hittite Sig Gen': [],
             'RhodeSchwarz SMA': [],
+            'Keysight FieldFox': [],
             'Unknown': []
         }
         for res in resources:
-            inst_type = 'Unknown'
-            label = res
             try:
-                dev = rm.open_resource(res, timeout=1000)
-                idn = dev.query("*IDN?")
-                dev.close()
-                lidn = idn.upper()
-                if 'KEITHLEY' in lidn or '2230' in res:
-                    inst_type = 'Keithley 2230'
-                    label = res.split('::')[3] if '::' in res else res
-                elif 'KEYSIGHT' in lidn or 'AGILENT' in lidn or 'EL34243' in lidn.upper():
-                    inst_type = 'Keysight EL34243A'
-                    label = res.split('::')[3] if '::' in res else res
-                elif 'HITTITE' in lidn or 'SIG GEN' in lidn or 'HITTITE' in res.upper():
-                    inst_type = 'Hittite Sig Gen'
-                    label = res.split('::')[3] if '::' in res else res
-                elif 'ROHDE' in lidn or 'SCHWARZ' in lidn or 'SMA' in lidn:
-                    inst_type = 'RhodeSchwarz SMA'
-                    label = res.split('::')[3] if '::' in res else res
+                inst = rm.open_resource(res, timeout=3000)
+                idn = inst.query("*IDN?").strip()
+                inst.close()
+                if 'Keithley' in idn and '2230' in idn:
+                    categories['Keithley 2230'].append((res, 'Keithley 2230'))
+                elif 'Keysight' in idn and ('EL34243A' in idn or 'Electronic Load' in idn):
+                    categories['Keysight EL34243A'].append((res, 'Keysight EL34243A'))
+                elif 'Keysight' in idn and ('E36233A' in idn or 'Power Supply' in idn):
+                    categories['Keysight E36233A'].append((res, 'Keysight E36233A'))
+                elif 'Keysight' in idn and ('FieldFox' in idn or 'N99' in idn or 'Handheld Spectrum' in idn):
+                    categories['Keysight FieldFox'].append((res, 'Keysight FieldFox'))
+                elif 'Hittite' in idn or 'Sig Gen' in idn:
+                    categories['Hittite Sig Gen'].append((res, 'Hittite Sig Gen'))
+                elif 'Rhode' in idn or 'Schwarz' in idn or 'SMA' in idn:
+                    categories['RhodeSchwarz SMA'].append((res, 'RhodeSchwarz SMA'))
+                else:
+                    categories['Unknown'].append((res, 'Unknown'))
             except Exception:
-                pass
-            categories.setdefault(inst_type, []).append((label, res, inst_type))
+                categories['Unknown'].append((res, 'Unknown'))
 
         total_found = sum(len(v) for v in categories.values())
         if total_found == 0:
-            QtWidgets.QMessageBox.information(self, 'No devices', 'No VISA resources found.')
-            return
+            self.detected_combo.addItem('No devices found', None)
 
         # Add grouped items to combo box
         for cat, items in categories.items():
-            if items:
-                self.detected_combo.addItem(f'--- {cat} ---', None)
-                for label, resource, inst_type in items:
-                    self.detected_combo.addItem(f'{inst_type}: {label}    ({resource})', (resource, inst_type))
+            for res, inst_type in items:
+                label = f"{cat}: {res}"
+                self.detected_combo.addItem(label, (res, inst_type))
 
         # refresh sequence builder instrument list as available detected devices changed
         try:
@@ -2059,7 +1374,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         widget.status_label.setText('Output ON')
                                     except Exception as e:
                                         widget.status_label.setText(f'Failed to set output: {e}')
-                            elif isinstance(widget, KeysightPanel):
+                            elif isinstance(widget, KeysightELPanel):
                                 if widget.dev:
                                     for ch in (1, 2):
                                         if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
@@ -2075,6 +1390,15 @@ class MainWindow(QtWidgets.QMainWindow):
                                     widget.input_toggle.setChecked(True)
                                     widget.input_toggle.setText('Input On')
                             elif isinstance(widget, RhodeSchwarzSMAPanel):
+                                if widget.dev:
+                                    try:
+                                        widget.dev.set_output(True)
+                                        widget.output_btn.setChecked(True)
+                                        widget.output_btn.setText('Output On')
+                                        widget.status_label.setText('Output ON')
+                                    except Exception as e:
+                                        widget.status_label.setText(f'Failed to set output: {e}')
+                            elif isinstance(widget, FieldFoxSAPanel):
                                 if widget.dev:
                                     try:
                                         widget.dev.set_output(True)
