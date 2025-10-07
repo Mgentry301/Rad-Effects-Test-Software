@@ -29,6 +29,256 @@ from GUI_Wrappers.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
 from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
+    def on_record_clicked(self):
+        """Toggle continuous spectrum recording (start/stop) and handle supply one-shot recording."""
+        # Use same Excel file as supply recording
+        excel_path = None
+        if hasattr(self, 'global_recorder') and self.global_recorder:
+            excel_path = self.global_recorder.excel_path
+
+
+
+        # Supply recording (manual trigger, not continuous)
+        if self.supply_record_toggle.isChecked():
+            panels = self.get_all_supply_panels()
+            if not panels:
+                self.statusBar().showMessage('No supply panels to record', 4000)
+            else:
+                from supply_recorder import SupplyRecorder
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                all_voltages = []
+                all_currents = []
+                for p in panels:
+                    v, c = p.get_all_readings()
+                    all_voltages.extend(v)
+                    all_currents.extend(c)
+                row = [now] + all_voltages + all_currents
+                try:
+                    import os
+                    from openpyxl import Workbook, load_workbook
+                    if os.path.exists(excel_path):
+                        wb = load_workbook(excel_path)
+                        if 'supply reads' in wb.sheetnames:
+                            ws = wb['supply reads']
+                        else:
+                            ws = wb.create_sheet('supply reads')
+                    else:
+                        wb = Workbook()
+                        ws = wb.active
+                        ws.title = 'supply reads'
+                        header = ['timestamp']
+                        for p in panels:
+                            v, c = p.get_all_readings()
+                            name = getattr(p, 'name_edit', None)
+                            if name and name.text().strip():
+                                pname = name.text().strip()
+                            else:
+                                pname = getattr(p, 'resource', 'Unknown')
+                            for i in range(len(v)):
+                                header.append(f"{pname} V{i+1}")
+                            for i in range(len(c)):
+                                header.append(f"{pname} I{i+1}")
+                        ws.append(header)
+                    ws.append(row)
+                    wb.save(excel_path)
+                    self.statusBar().showMessage('Supply data recorded', 3000)
+                except Exception as e:
+                    self.statusBar().showMessage(f'Supply record failed: {e}', 4000)
+
+        # --- Continuous Spectrum Recording ---
+        if self.spectrum_record_toggle.isChecked():
+            import threading
+            import time
+            if getattr(self, '_spectrum_recording', False):
+                # Stop recording
+                self._spectrum_recording = False
+                if hasattr(self, '_spectrum_thread') and self._spectrum_thread:
+                    self._spectrum_thread_running = False
+                    self._spectrum_thread.join(timeout=2)
+                    self._spectrum_thread = None
+                self.record_btn.setText('Record')
+                self.statusBar().showMessage('Stopped spectrum recording', 3000)
+            else:
+                # Start recording
+                fieldfox_panel = None
+                for i in range(self.tabs.count()):
+                    w = self.tabs.widget(i)
+                    if isinstance(w, FieldFoxSAPanel):
+                        fieldfox_panel = w
+                        break
+                if fieldfox_panel is None:
+                    self.statusBar().showMessage('No FieldFox panel found', 4000)
+                    return
+                # Prompt for file only when starting recording
+                excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Select Excel File for Spectrum Recording', '', 'Excel Files (*.xlsx)')[0]
+                if not excel_path:
+                    self.statusBar().showMessage('No Excel file selected for spectrum recording', 4000)
+                    return
+                self._spectrum_recording = True
+                self.record_btn.setText('Stop Recording')
+                self.statusBar().showMessage('Started spectrum recording', 3000)
+                def spectrum_capture_thread(panel, excel_path, running_flag_cb):
+                    import os
+                    from openpyxl import Workbook, load_workbook
+                    import pyvisa
+                    import time
+                    freq = []
+                    try:
+                        freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
+                    except Exception:
+                        pass
+                    sample_count = 0
+                    start_time = time.time()
+                    last_report_time = start_time
+                    while running_flag_cb():
+                        try:
+                            amplitudes = panel.sa.capture_spectrum()
+                            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                            if os.path.exists(excel_path):
+                                wb = load_workbook(excel_path)
+                                if 'capture data' in wb.sheetnames:
+                                    ws = wb['capture data']
+                                else:
+                                    ws = wb.create_sheet('capture data')
+                            else:
+                                wb = Workbook()
+                                ws = wb.active
+                                ws.title = 'capture data'
+                                header = ['timestamp'] + [f"{f:.6f}" for f in freq]
+                                ws.append(header)
+                            row = [now] + [float(a) for a in amplitudes]
+                            ws.append(row)
+                            wb.save(excel_path)
+                            sample_count += 1
+                        except pyvisa.errors.InvalidSession:
+                            break
+                        except Exception as e:
+                            # Handle FieldFox -410 Query Interrupted error gracefully
+                            if hasattr(e, 'args') and e.args and ('-410' in str(e.args[0]) or 'Query Interrupted' in str(e)):
+                                pass  # skip this cycle, immediately retry
+                            else:
+                                pass  # ignore other errors
+                        # Update sample rate every 2 seconds
+                        now_time = time.time()
+                        if now_time - last_report_time >= 2.0:
+                            elapsed = now_time - start_time
+                            avg_rate = sample_count / elapsed if elapsed > 0 else 0.0
+                            QtCore.QMetaObject.invokeMethod(
+                                self.read_speed_label,
+                                "setText",
+                                QtCore.Qt.QueuedConnection,
+                                QtCore.Q_ARG(str, f"Spectrum Rate: {avg_rate:.2f} samples/sec")
+                            )
+                            last_report_time = now_time
+                        # Minimal sleep for max speed
+                        time.sleep(0.1)
+                self._spectrum_thread_running = True
+                def running_flag():
+                    return self._spectrum_recording and self._spectrum_thread_running
+                self._spectrum_thread = threading.Thread(
+                    target=spectrum_capture_thread,
+                    args=(fieldfox_panel, excel_path, running_flag),
+                    daemon=True
+                )
+                self._spectrum_thread.start()
+    def add_instrument_panel(self, resource, label, inst_type):
+        """Add a new instrument panel to the tabs based on resource, label, and instrument type."""
+        panel = None
+        if inst_type == 'Keithley 2230':
+            panel = KeithleyPanel(resource)
+        elif inst_type == 'Keysight EL34243A':
+            panel = KeysightELPanel(resource)
+        elif inst_type == 'Keysight E36233A':
+            panel = KeysightE36233APanel(resource)
+        elif inst_type == 'Hittite Sig Gen':
+            panel = HittiteSigGenPanel(resource)
+        elif inst_type == 'RhodeSchwarz SMA':
+            panel = RhodeSchwarzSMAPanel(resource)
+        elif inst_type == 'Keysight FieldFox':
+            panel = FieldFoxSAPanel(resource)
+        else:
+            panel = KeithleyPanel(resource)
+        self.tabs.addTab(panel, label)
+        if hasattr(panel, 'resource_edit'):
+            panel.resource_edit.setText(resource)
+        if hasattr(panel, 'name_edit'):
+            panel.name_edit.setText(label)
+        if hasattr(panel, 'on_connect'):
+            panel.on_connect()
+        self._auto_turn_off_panel(panel)
+    def init_global_recorder_controls(self, parent_layout):
+        rec_row = QtWidgets.QHBoxLayout()
+        self.global_start_rec_btn = QtWidgets.QPushButton('Start Recording All Supplies')
+        self.global_stop_rec_btn = QtWidgets.QPushButton('Stop Recording')
+        self.global_stop_rec_btn.setEnabled(False)
+        self.global_start_rec_btn.clicked.connect(self.start_global_recording)
+        self.global_stop_rec_btn.clicked.connect(self.stop_global_recording)
+        rec_row.addWidget(self.global_start_rec_btn)
+        rec_row.addWidget(self.global_stop_rec_btn)
+        parent_layout.addLayout(rec_row)
+        # Add read speed display
+        self.read_speed_label = QtWidgets.QLabel('Read Speed: -- reads/sec')
+        parent_layout.addWidget(self.read_speed_label)
+
+    def get_all_supply_panels(self):
+        panels = []
+        for i in range(self.tabs.count()):
+            w = self.tabs.widget(i)
+            if isinstance(w, (KeithleyPanel, KeysightE36233APanel)):
+                panels.append(w)
+        return panels
+
+    def start_global_recording(self):
+        panels = self.get_all_supply_panels()
+        if not panels:
+            self.statusBar().showMessage('No supply panels to record', 4000)
+            return
+        from supply_recorder import SupplyRecorder
+        excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Supply Reads', '', 'Excel Files (*.xlsx)')[0]
+        if not excel_path:
+            return
+        def update_read_speed(rps):
+            self.read_speed_label.setText(f'Read Speed: {rps:.2f} reads/sec')
+        class PatchedSupplyRecorder(SupplyRecorder):
+            def _run(self):
+                import time
+                import datetime as dtmod
+                self.last_perf_time = time.time()
+                self.read_count = 0
+                while not self._stop_event.is_set():
+                    now = dtmod.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    all_voltages = []
+                    all_currents = []
+                    for func in self.get_readings_funcs:
+                        voltages, currents = func()
+                        all_voltages.extend(voltages)
+                        all_currents.extend(currents)
+                    row = [now] + all_voltages + all_currents
+                    self.buffer.append(row)
+                    self.read_count += 1
+                    # Performance reporting every 10 seconds
+                    if time.time() - self.last_perf_time >= 10:
+                        avg_rps = self.read_count / (time.time() - self.last_perf_time)
+                        print(f"[SupplyRecorder] Average reads/sec: {avg_rps:.2f} over last 10 seconds")
+                        update_read_speed(avg_rps)
+                        self.last_perf_time = time.time()
+                        self.read_count = 0
+                        self._flush_buffer()
+                    time.sleep(0.01)  # ~100Hz, adjust as needed
+                self._flush_buffer()
+        self.global_recorder = PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
+        self.global_recorder.start()
+        self.global_start_rec_btn.setEnabled(False)
+        self.global_stop_rec_btn.setEnabled(True)
+        self.statusBar().showMessage('Started recording all supplies', 4000)
+
+    def stop_global_recording(self):
+        if hasattr(self, 'global_recorder') and self.global_recorder:
+            self.global_recorder.stop()
+            self.global_recorder = None
+            self.global_start_rec_btn.setEnabled(True)
+            self.global_stop_rec_btn.setEnabled(False)
+            self.statusBar().showMessage('Stopped recording', 4000)
     # helper to format timestamps for logs
     def _ts(self):
         return datetime.datetime.now().strftime('%H:%M:%S')
@@ -409,18 +659,11 @@ class MainWindow(QtWidgets.QMainWindow):
         test_widget = QtWidgets.QWidget()
         test_layout = QtWidgets.QVBoxLayout(test_widget)
 
-        # Power controls
-        power_row = QtWidgets.QHBoxLayout()
-        self.test_power_toggle_btn = QtWidgets.QPushButton('Power Off All')
-        self.test_power_toggle_btn.setCheckable(True)
-        self.test_power_toggle_btn.setChecked(False)
-        self.test_power_toggle_btn.clicked.connect(self.on_test_power_toggle)
-        self._update_test_power_toggle_btn(False)
-        power_row.addWidget(self.test_power_toggle_btn)
-        test_layout.addLayout(power_row)
+
+
+    # (Removed duplicate Test tab UI block. All UI code is inside __init__ with correct indentation.)
 
         # Power sequence builder (wrapper)
-        # sequence builder should only list instruments that currently have active tabs
         self.power_seq_builder = PowerSequenceBuilder(
             parent=self,
             get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())]
@@ -474,6 +717,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.top_tabs.addTab(prog_widget, 'Programming')
 
+
         # --- Test Tab ---
         test2_widget = QtWidgets.QWidget()
         test2_layout = QtWidgets.QVBoxLayout(test2_widget)
@@ -484,11 +728,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self.test_tab_power_btn.setCheckable(True)
         self.test_tab_power_btn.setChecked(False)
         self.test_tab_power_btn.clicked.connect(self.on_test_power_toggle)
-        # initialize color
         if hasattr(self, '_update_test_power_toggle_btn'):
             self._update_test_power_toggle_btn(False)
         tpower_row.addWidget(self.test_tab_power_btn)
         test2_layout.addLayout(tpower_row)
+
+        # --- New Record Controls ---
+        record_row = QtWidgets.QHBoxLayout()
+        self.record_btn = QtWidgets.QPushButton('Record')
+        self.record_btn.clicked.connect(self.on_record_clicked)
+        record_row.addWidget(self.record_btn)
+        self.supply_record_toggle = QtWidgets.QCheckBox('Supply Recording')
+        self.supply_record_toggle.setChecked(True)
+        record_row.addWidget(self.supply_record_toggle)
+        self.spectrum_record_toggle = QtWidgets.QCheckBox('Spectrum Recording')
+        self.spectrum_record_toggle.setChecked(False)
+        record_row.addWidget(self.spectrum_record_toggle)
+        test2_layout.addLayout(record_row)
+
+        # Add global recorder controls to test tab
+        rec_row = QtWidgets.QHBoxLayout()
+        self.global_start_rec_btn = QtWidgets.QPushButton('Start Recording All Supplies')
+        self.global_stop_rec_btn = QtWidgets.QPushButton('Stop Recording')
+        self.global_stop_rec_btn.setEnabled(False)
+        self.global_start_rec_btn.clicked.connect(self.start_global_recording)
+        self.global_stop_rec_btn.clicked.connect(self.stop_global_recording)
+        rec_row.addWidget(self.global_start_rec_btn)
+        rec_row.addWidget(self.global_stop_rec_btn)
+        test2_layout.addLayout(rec_row)
+        self.read_speed_label = QtWidgets.QLabel('Read Speed: -- reads/sec')
+        test2_layout.addWidget(self.read_speed_label)
 
         # Program / Reprogram button
         prog_row = QtWidgets.QHBoxLayout()
@@ -701,7 +970,19 @@ class MainWindow(QtWidgets.QMainWindow):
         instruments = []
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
-            tab_type = 'Keithley 2230' if isinstance(widget, KeithleyPanel) else 'Keysight EL34243A'
+            # Determine panel type
+            if isinstance(widget, KeithleyPanel):
+                tab_type = 'Keithley 2230'
+            elif isinstance(widget, KeysightELPanel):
+                tab_type = 'Keysight EL34243A'
+            elif isinstance(widget, KeysightE36233APanel):
+                tab_type = 'Keysight E36233A'
+            elif isinstance(widget, RhodeSchwarzSMAPanel):
+                tab_type = 'RhodeSchwarz SMA'
+            elif isinstance(widget, FieldFoxSAPanel):
+                tab_type = 'Keysight FieldFox'
+            else:
+                tab_type = 'Unknown'
             # determine a saved name: prefer the editable name if present, otherwise the current tab text
             try:
                 if hasattr(widget, 'name_edit') and widget.name_edit.text().strip():
@@ -713,8 +994,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     saved_name = self.tabs.tabText(i)
                 except Exception:
                     saved_name = ''
-            entry = {'type': tab_type, 'resource': widget.resource, 'name': saved_name}
-            if tab_type == 'Keithley 2230':
+            entry = {'type': tab_type, 'resource': getattr(widget, 'resource', ''), 'name': saved_name}
+            # Save per-panel attributes
+            if isinstance(widget, KeithleyPanel):
                 entry['channels'] = {}
                 for ch in (1, 2, 3):
                     entry['channels'][ch] = {
@@ -722,7 +1004,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         'current': widget.iam_edits[ch].text(),
                         'output': widget.master_out_btn.isChecked()
                     }
-            else:
+            elif isinstance(widget, KeysightELPanel):
                 entry['channels'] = {}
                 for ch in (1, 2):
                     entry['channels'][ch] = {
@@ -730,6 +1012,31 @@ class MainWindow(QtWidgets.QMainWindow):
                         'value': widget.mode_value.text(),
                         'input': widget.input_toggle.isChecked()
                     }
+            elif isinstance(widget, KeysightE36233APanel):
+                entry['channels'] = {}
+                for ch in (1, 2):
+                    entry['channels'][ch] = {
+                        'voltage': widget.voltage_edit.text(),
+                        'current': widget.current_edit.text(),
+                        'output': widget.onoff_btn.isChecked()
+                    }
+            # FieldFox SA panel settings
+            if isinstance(widget, FieldFoxSAPanel):
+                entry['settings'] = {
+                    'center': widget.center_edit.text(),
+                    'span': widget.span_edit.text(),
+                    'start': widget.start_edit.text(),
+                    'stop': widget.stop_edit.text(),
+                    'unit': widget.unit_combo.currentText()
+                }
+            # RhodeSchwarz SMA panel settings
+            if isinstance(widget, RhodeSchwarzSMAPanel):
+                entry['settings'] = {
+                    'frequency': widget.freq_edit.text(),
+                    'freq_unit': widget.freq_unit_combo.currentText(),
+                    'power': widget.pow_edit.text(),
+                    'output': widget.output_btn.isChecked()
+                }
             instruments.append(entry)
 
         # Save sequencing information if available
@@ -769,12 +1076,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if not os.path.exists(path):
             QtWidgets.QMessageBox.information(self, 'No config', f'Config file not found: {path}')
             return
+        # Remove all tabs
+        while self.tabs.count():
+            self.tabs.removeTab(0)
+
+        # Read config file and extract instruments, sequence, use_sequence
+        content = None
+        if not os.path.exists(path):
+            QtWidgets.QMessageBox.information(self, 'No config', f'Config file not found: {path}')
+            return
         try:
             with open(path, 'r') as f:
                 content = json.load(f)
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, 'Load failed', str(e))
-            return
+            content = None
 
         # Build current VISA resource list to support substitutions
         try:
@@ -785,7 +1101,11 @@ class MainWindow(QtWidgets.QMainWindow):
             current_resources = []
 
         # Backwards compatibility: older configs were lists of instruments
-        if isinstance(content, list):
+        if content is None:
+            instruments = []
+            sequence = []
+            use_sequence = False
+        elif isinstance(content, list):
             instruments = content
             sequence = []
             use_sequence = False
@@ -794,326 +1114,198 @@ class MainWindow(QtWidgets.QMainWindow):
             sequence = content.get('sequence', [])
             use_sequence = content.get('use_sequence', False)
 
-        # Remove all tabs
-        while self.tabs.count():
-            self.tabs.removeTab(0)
-
-        # Track resources we've added during this load to avoid duplicates (covers substitutions)
         used_resources = set()
-
-        # Add instruments from config
         for entry in instruments:
             inst_type = entry.get('type', 'Keithley 2230')
             resource = entry.get('resource', '')
-            # If the saved resource isn't available, try to find a replacement
             if resource and resource not in current_resources:
-                # Look for candidates of same inst_type
                 try:
                     candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
                 except Exception:
                     candidates = []
                 if candidates:
-                    # Present a small dialog to allow substitution or cancel loading
                     items = [f'{c[2]}    ({c[1]})' for c in candidates]
-                    item, ok = QtWidgets.QInputDialog.getItem(self, 'Substitute instrument',
+                    item, ok = QtWidgets.QInputDialog.getItem(
+                        self, 'Substitute instrument',
                         f'Original resource not found: {resource}\nSelect substitute or Cancel to abort load:', items, 0, False)
                     if not ok:
                         QtWidgets.QMessageBox.information(self, 'Load cancelled', 'Loading cancelled by user')
-                        # close resource manager if used
-                        try:
-                            if rm_for_load is not None:
-                                rm_for_load.close()
-                        except Exception:
-                            pass
                         return
-                    # map selected item back to resource
                     sel_idx = items.index(item)
                     resource = candidates[sel_idx][1]
                 else:
-                    # No candidates found: offer to skip this instrument or cancel entire load
-                    resp = QtWidgets.QMessageBox.question(self, 'Instrument missing',
+                    resp = QtWidgets.QMessageBox.question(
+                        self, 'Instrument missing',
                         f'Instrument {resource} of type {inst_type} not found and no replacements available.\nSkip this instrument? (No = cancel load)',
                         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
                     if resp == QtWidgets.QMessageBox.No:
-                        try:
-                            if rm_for_load is not None:
-                                rm_for_load.close()
-                        except Exception:
-                            pass
                         return
                     else:
-                        # skip this instrument
                         continue
+            # Always add FieldFox panel if type matches, even if resource is missing or not detected
             panel = None
-            # If this resource has already been used (for example a previous substitution
-            # mapped to the same VISA resource), reuse the existing panel rather than
-            # creating another tab for the same device.
             if resource and resource in used_resources:
                 for i in range(self.tabs.count()):
                     w = self.tabs.widget(i)
                     if getattr(w, 'resource', None) == resource:
                         panel = w
                         break
-            if inst_type == 'Keithley 2230':
-                panel = KeithleyPanel(resource)
-                self.tabs.addTab(panel, resource)
+            if panel is None:
+                if inst_type == 'Keithley 2230':
+                    panel = KeithleyPanel(resource)
+                elif inst_type == 'Keysight EL34243A':
+                    panel = KeysightELPanel(resource)
+                elif inst_type == 'Keysight E36233A':
+                    panel = KeysightE36233APanel(resource)
+                elif inst_type == 'Hittite Sig Gen':
+                    panel = HittiteSigGenPanel(resource)
+                elif inst_type == 'RhodeSchwarz SMA':
+                    panel = RhodeSchwarzSMAPanel(resource)
+                elif inst_type == 'Keysight FieldFox':
+                    # Use resource or fallback to name if missing
+                    visa_addr = resource if resource else entry.get('name', 'FieldFox')
+                    panel = FieldFoxSAPanel(visa_addr)
+                else:
+                    panel = KeithleyPanel(resource)
+                tab_label = entry.get('name', resource)
+                self.tabs.addTab(panel, tab_label)
                 used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
+                if hasattr(panel, 'resource_edit'):
+                    panel.resource_edit.setText(resource)
+                if hasattr(panel, 'name_edit'):
+                    panel.name_edit.setText(tab_label)
                 try:
                     name_val = entry.get('name') if isinstance(entry, dict) else None
                     if name_val and hasattr(panel, 'name_edit'):
                         panel.name_edit.setText(name_val)
                 except Exception:
                     pass
-                panel.on_connect()
-                # Set channel values and apply them to instrument
-                for ch in (1, 2, 3):
-                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
-                    if ch_cfg:
-                        panel.vol_edits[ch].setText(str(ch_cfg.get('voltage', '0')))
-                        panel.iam_edits[ch].setText(str(ch_cfg.get('current', '0.03')))
-                        if panel.inst:
+                # Auto-connect panel after loading
+                if hasattr(panel, 'on_connect'):
+                    try:
+                        if inst_type == 'Keysight FieldFox':
+                            # Delay FieldFox connection to allow VISA to initialize
+                            QtCore.QTimer.singleShot(500, panel.on_connect)
+                        else:
+                            panel.on_connect()
+                    except Exception:
+                        pass
+                # Set panel values from config
+                if inst_type == 'Keithley 2230':
+                    for ch in (1, 2, 3):
+                        ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
+                        if ch_cfg:
                             try:
-                                panel.inst.set_voltage(ch, float(panel.vol_edits[ch].text()))
-                                panel.inst.set_current(ch, float(panel.iam_edits[ch].text()))
+                                panel.vol_edits[ch].setText(str(ch_cfg.get('voltage', '0')))
+                                panel.iam_edits[ch].setText(str(ch_cfg.get('current', '0.03')))
+                                panel.master_out_btn.setChecked(bool(ch_cfg.get('output', False)))
+                                panel.master_out_btn.setText('All On' if ch_cfg.get('output', False) else 'All Off')
+                                # Set instrument output state if connected
+                                if getattr(panel, 'inst', None):
+                                    panel.inst.set_voltage(ch, float(ch_cfg.get('voltage', '0')))
+                                    panel.inst.set_current(ch, float(ch_cfg.get('current', '0.03')))
+                                    panel.inst.set_output(ch, bool(ch_cfg.get('output', False)))
                             except Exception:
                                 pass
-                panel.master_out_btn.setChecked(False)
-                panel.master_out_btn.setText('All Off')
-            elif inst_type == 'Keysight EL34243A':
-                panel = KeysightELPanel(resource)
-                self.tabs.addTab(panel, resource)
-                used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
-                panel.on_connect()
-                # Set channel values and apply them to instrument
-                for ch in (1, 2):
-                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
-                    if ch_cfg:
-                        panel.ch_select.setCurrentIndex(ch - 1)
-                        panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
-                        panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
-                        if panel.dev:
+                elif inst_type == 'Keysight EL34243A':
+                    for ch in (1, 2):
+                        ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
+                        if ch_cfg:
                             try:
-                                panel.dev.set_mode(ch, panel.mode_combo.currentText())
-                                panel.dev.set_parameter(ch, panel.mode_combo.currentText(), float(panel.mode_value.text()))
+                                panel.ch_select.setCurrentIndex(ch - 1)
+                                panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
+                                panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
+                                panel.input_toggle.setChecked(bool(ch_cfg.get('input', False)))
+                                panel.input_toggle.setText('Input On' if ch_cfg.get('input', False) else 'Input Off')
+                                # Set instrument input state if connected
+                                if getattr(panel, 'dev', None):
+                                    panel.dev.set_mode(ch, ch_cfg.get('mode', 'CC'))
+                                    panel.dev.set_parameter(ch, ch_cfg.get('mode', 'CC'), float(ch_cfg.get('value', '0.1')))
+                                    panel.dev.set_input(ch, bool(ch_cfg.get('input', False)))
                             except Exception:
                                 pass
-                        panel.input_toggle.setChecked(False)
-                        panel.input_toggle.setText('Input Off')
-                    # end of per-panel setup
-            elif inst_type == 'Keysight E36233A':
-                panel = KeysightE36233APanel(resource)
-                self.tabs.addTab(panel, resource)
-                used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
-                panel.on_connect()
-                # Set channel values and apply them to instrument
-                for ch in (1, 2):
-                    ch_cfg = entry['channels'].get(str(ch)) or entry['channels'].get(ch)
-                    if ch_cfg:
-                        panel.ch_select.setCurrentIndex(ch - 1)
-                        panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
-                        panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
-                        if panel.dev:
+                elif inst_type == 'Keysight E36233A':
+                    for ch in (1, 2):
+                        ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
+                        if ch_cfg:
                             try:
-                                panel.dev.set_mode(ch, panel.mode_combo.currentText())
-                                panel.dev.set_parameter(ch, panel.mode_combo.currentText(), float(panel.mode_value.text()))
+                                panel.voltage_edit.setText(str(ch_cfg.get('voltage', '0')))
+                                panel.current_edit.setText(str(ch_cfg.get('current', '0.03')))
+                                panel.onoff_btn.setChecked(bool(ch_cfg.get('output', False)))
+                                panel.onoff_btn.setText('Output On' if ch_cfg.get('output', False) else 'Output Off')
+                                if getattr(panel, 'inst', None):
+                                    panel.inst.set_voltage(ch, float(ch_cfg.get('voltage', '0')))
+                                    panel.inst.set_current(ch, float(ch_cfg.get('current', '0.03')))
+                                    panel.inst.set_output(ch, bool(ch_cfg.get('output', False)))
                             except Exception:
                                 pass
-                        panel.input_toggle.setChecked(False)
-                        panel.input_toggle.setText('Input Off')
-                    # end of per-panel setup
-            elif inst_type == 'Hittite Sig Gen':
-                panel = HittiteSigGenPanel(resource)
-                self.tabs.addTab(panel, resource)
-                used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
-                panel.on_connect()
-            elif inst_type == 'RhodeSchwarz SMA':
-                panel = RhodeSchwarzSMAPanel(resource)
-                self.tabs.addTab(panel, resource)
-                used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
-                panel.on_connect()
-                # end of per-panel setup
-            elif inst_type == 'Keysight FieldFox':
-                panel = FieldFoxSAPanel(resource)
-                self.tabs.addTab(panel, resource)
-                used_resources.add(resource)
-                panel.resource_edit.setText(resource)
-                # restore saved name if present
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
-                panel.on_connect()
-                # end of per-panel setup
-            # Set up tab name update callback for loaded panels
+                elif inst_type == 'Hittite Sig Gen':
+                    # If config includes output state, set it
+                    try:
+                        output_state = entry.get('output', False)
+                        panel.output_btn.setChecked(bool(output_state))
+                        panel.output_btn.setText('Output On' if output_state else 'Output Off')
+                        if getattr(panel, 'dev', None):
+                            panel.dev.set_output(bool(output_state))
+                    except Exception:
+                        pass
+                elif inst_type == 'RhodeSchwarz SMA':
+                    try:
+                        settings = entry.get('settings', {})
+                        freq = settings.get('frequency')
+                        freq_unit = settings.get('freq_unit')
+                        power = settings.get('power')
+                        output_state = settings.get('output', False)
+                        if freq is not None:
+                            panel.freq_edit.setText(str(freq))
+                        if freq_unit is not None:
+                            idx = panel.freq_unit_combo.findText(str(freq_unit))
+                            if idx != -1:
+                                panel.freq_unit_combo.setCurrentIndex(idx)
+                        if power is not None:
+                            panel.pow_edit.setText(str(power))
+                        panel.output_btn.setChecked(bool(output_state))
+                        panel.output_btn.setText('Output On' if output_state else 'Output Off')
+                        if getattr(panel, 'dev', None):
+                            panel.dev.set_output(bool(output_state))
+                    except Exception:
+                        pass
+                elif inst_type == 'Keysight FieldFox':
+                    try:
+                        settings = entry.get('settings', {})
+                        center = settings.get('center')
+                        span = settings.get('span')
+                        start = settings.get('start')
+                        stop = settings.get('stop')
+                        unit = settings.get('unit')
+                        if center is not None:
+                            panel.center_edit.setText(str(center))
+                        if span is not None:
+                            panel.span_edit.setText(str(span))
+                        if start is not None:
+                            panel.start_edit.setText(str(start))
+                        if stop is not None:
+                            panel.stop_edit.setText(str(stop))
+                        if unit is not None:
+                            idx = panel.unit_combo.findText(str(unit))
+                            if idx != -1:
+                                panel.unit_combo.setCurrentIndex(idx)
+                    except Exception:
+                        pass
+            # Tab name update logic (no label reference)
             def update_tab_name(panel=panel, resource=resource):
                 idx = self.tabs.indexOf(panel)
                 if idx != -1:
-                    name = panel.name_edit.text().strip() if hasattr(panel, 'name_edit') else ''
-                    self.tabs.setTabText(idx, name if name else resource)
+                    self.tabs.setTabText(idx, getattr(panel, 'name_edit', None).text() if hasattr(panel, 'name_edit') else resource)
             if hasattr(panel, 'name_edit'):
                 panel.name_edit.textChanged.connect(lambda: update_tab_name(panel, resource))
-                # refresh sequence builder dropdown when name changes
                 try:
                     if hasattr(self, 'power_seq_builder'):
-                        panel.name_edit.textChanged.connect(lambda: self.power_seq_builder.refresh_instr_combo())
+                        self.power_seq_builder.refresh_instr_combo()
                 except Exception:
                     pass
             update_tab_name(panel, resource)
-
-        # Restore sequencing info if present
-        try:
-            if hasattr(self, 'power_seq_builder'):
-                # clear existing sequence
-                self.power_seq_builder.seq_list.clear()
-                for step in sequence:
-                    self.power_seq_builder.seq_list.addItem(step)
-                # set enabled state
-                self.power_seq_builder.enable_checkbox.setChecked(bool(use_sequence))
-                # refresh combo entries to reflect loaded tab names
-                self.power_seq_builder.refresh_instr_combo()
-        except Exception:
-            pass
-        # Restore programming code if present
-        try:
-            prog = content.get('program_code', '') if isinstance(content, dict) else ''
-            if hasattr(self, 'program_code_edit') and prog:
-                self.program_code_edit.setPlainText(prog)
-        except Exception:
-            pass
-        self.statusBar().showMessage(f'Loaded config from {path}', 4000)
-        self.refresh_configs_list()
-        # Set the dropdown to the currently loaded config
-        fname = os.path.basename(path)
-        idx = self.load_combo.findText(fname)
-        if idx != -1:
-            self.load_combo.setCurrentIndex(idx)
-
-    def load_config_on_startup(self):
-        # Load first config file in configs folder if present
-        files = [f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')]
-        if files:
-            path = os.path.join(self.configs_dir, files[0])
-            self.load_config(path)
-
-    def add_instrument_panel(self, resource: str, label: str = None, inst_type: str = 'Keithley 2230'):
-        # Create panel
-        if inst_type.startswith('Keysight EL34243A'):
-            panel = KeysightELPanel(resource)
-        elif inst_type.startswith('Keysight E36233A'):
-            panel = KeysightE36233APanel(resource)
-        elif inst_type.startswith('Keysight FieldFox') or 'FieldFox' in inst_type:
-            panel = FieldFoxSAPanel(resource)
-        elif inst_type.startswith('Hittite') or inst_type.startswith('Sig Gen') or 'Hittite' in inst_type or 'Sig Gen' in inst_type:
-            panel = HittiteSigGenPanel(resource)
-        elif inst_type.startswith('Rhode') or 'Rhode' in inst_type or 'Schwarz' in inst_type or 'SMA' in inst_type:
-            panel = RhodeSchwarzSMAPanel(resource)
-        else:
-            panel = KeithleyPanel(resource)
-        # Use name from name_edit if populated, else label or resource
-        tab_label = label if label else resource
-        if hasattr(panel, 'name_edit') and panel.name_edit.text().strip():
-            tab_label = panel.name_edit.text().strip()
-        # avoid duplicate labels
-        for i in range(self.tabs.count()):
-            if self.tabs.tabText(i) == tab_label:
-                QtWidgets.QMessageBox.information(self, 'Duplicate', f'Tab "{tab_label}" already exists.')
-                return
-        self.tabs.addTab(panel, tab_label)
-        self.tabs.setCurrentWidget(panel)
-        # Set up tab name update callback (connect after tab is added)
-        def update_tab_name(panel=panel, label=label, resource=resource):
-            idx = self.tabs.indexOf(panel)
-            if idx != -1:
-                name = panel.name_edit.text().strip()
-                self.tabs.setTabText(idx, name if name else label if label else resource)
-        if hasattr(panel, 'name_edit'):
-            panel.name_edit.textChanged.connect(lambda: update_tab_name(panel, label, resource))
-            # refresh sequence builder dropdown when name changes
-            try:
-                if hasattr(self, 'power_seq_builder'):
-                    panel.name_edit.textChanged.connect(lambda: self.power_seq_builder.refresh_instr_combo())
-            except Exception:
-                pass
-        update_tab_name(panel, label, resource)
-        self.power_seq_builder.refresh_instr_combo()
-        # Auto-connect shortly after adding the panel so VISA resources initialize
-        try:
-            QtCore.QTimer.singleShot(100, lambda: (hasattr(panel, 'on_connect') and panel.on_connect()))
-            # After a small delay, ensure the newly-added instrument outputs are OFF
-            QtCore.QTimer.singleShot(250, lambda: self._auto_turn_off_panel(panel))
-        except Exception:
-            try:
-                if hasattr(panel, 'on_connect'):
-                    panel.on_connect()
-                try:
-                    self._auto_turn_off_panel(panel)
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-    def add_instrument_by_serial(self, sn: str, inst_type: str = 'Keithley 2230'):
-        sn = sn.strip()
-        if not sn:
-            return
-        # If full resource given, use as-is; otherwise construct USB resource
-        resource = sn if '::' in sn else f'USB0::0x05E6::0x2230::{sn}::INSTR'
-        self.add_instrument_panel(resource, sn if '::' not in sn else resource, inst_type)
-
-    def get_all_instruments(self):
-        # return list of instrument names from tabs and detected combo (if present)
-        names = [self.tabs.tabText(i) for i in range(self.tabs.count())]
-        # also include detected combo simple labels (resource parts)
-        try:
-            for i in range(self.detected_combo.count()):
-                data = self.detected_combo.itemData(i)
-                text = self.detected_combo.itemText(i)
-                if data and isinstance(data, tuple):
-                    # resource entries
-                    parts = text.split('(')
-                    label = parts[0].strip()
-                    if label and label not in names:
-                        names.append(label)
-        except Exception:
-            pass
-        return names
-
+            self._auto_turn_off_panel(panel)
     def _refresh_seq_instr_combo(self):
         self.seq_instr_combo.clear()
         for i in range(self.tabs.count()):
@@ -1125,14 +1317,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_scan_instruments(self):
         """Scan VISA resources and populate detected_combo with resources. Attempt to classify type by *IDN?"""
         self.detected_combo.clear()
+        import pyvisa
+        import concurrent.futures
+        rm = pyvisa.ResourceManager()
         try:
-            import pyvisa
-            rm = pyvisa.ResourceManager()
             resources = list(rm.list_resources())
-        except Exception as e:
+        except Exception:
             resources = []
 
-        # Categorize instruments
         categories = {
             'Keithley 2230': [],
             'Keysight EL34243A': [],
@@ -1142,39 +1334,45 @@ class MainWindow(QtWidgets.QMainWindow):
             'Keysight FieldFox': [],
             'Unknown': []
         }
-        for res in resources:
+
+        def scan_resource(res):
             try:
                 inst = rm.open_resource(res, timeout=3000)
                 idn = inst.query("*IDN?").strip()
                 inst.close()
                 if 'Keithley' in idn and '2230' in idn:
-                    categories['Keithley 2230'].append((res, 'Keithley 2230'))
+                    return ('Keithley 2230', res, 'Keithley 2230')
                 elif 'Keysight' in idn and ('EL34243A' in idn or 'Electronic Load' in idn):
-                    categories['Keysight EL34243A'].append((res, 'Keysight EL34243A'))
+                    return ('Keysight EL34243A', res, 'Keysight EL34243A')
                 elif 'Keysight' in idn and ('E36233A' in idn or 'Power Supply' in idn):
-                    categories['Keysight E36233A'].append((res, 'Keysight E36233A'))
+                    return ('Keysight E36233A', res, 'Keysight E36233A')
                 elif 'Keysight' in idn and ('FieldFox' in idn or 'N99' in idn or 'Handheld Spectrum' in idn):
-                    categories['Keysight FieldFox'].append((res, 'Keysight FieldFox'))
+                    return ('Keysight FieldFox', res, 'Keysight FieldFox')
                 elif 'Hittite' in idn or 'Sig Gen' in idn:
-                    categories['Hittite Sig Gen'].append((res, 'Hittite Sig Gen'))
+                    return ('Hittite Sig Gen', res, 'Hittite Sig Gen')
                 elif 'Rhode' in idn or 'Schwarz' in idn or 'SMA' in idn:
-                    categories['RhodeSchwarz SMA'].append((res, 'RhodeSchwarz SMA'))
+                    return ('RhodeSchwarz SMA', res, 'RhodeSchwarz SMA')
                 else:
-                    categories['Unknown'].append((res, 'Unknown'))
+                    return ('Unknown', res, 'Unknown')
             except Exception:
-                categories['Unknown'].append((res, 'Unknown'))
+                return ('Unknown', res, 'Unknown')
+
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(resources))) as executor:
+            future_to_res = {executor.submit(scan_resource, res): res for res in resources}
+            for future in concurrent.futures.as_completed(future_to_res):
+                cat, res, inst_type = future.result()
+                categories[cat].append((res, inst_type))
 
         total_found = sum(len(v) for v in categories.values())
         if total_found == 0:
             self.detected_combo.addItem('No devices found', None)
 
-        # Add grouped items to combo box
         for cat, items in categories.items():
             for res, inst_type in items:
                 label = f"{cat}: {res}"
                 self.detected_combo.addItem(label, (res, inst_type))
 
-        # refresh sequence builder instrument list as available detected devices changed
         try:
             if hasattr(self, 'power_seq_builder'):
                 self.power_seq_builder.refresh_instr_combo()
@@ -1182,7 +1380,6 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
 
         self.statusBar().showMessage(f'Found {total_found} device(s)', 4000)
-        # Removed self.add_input.setText; Add instrument text box no longer exists
 
     def on_add_selected_instrument(self):
         data = self.detected_combo.currentData()

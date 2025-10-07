@@ -1,6 +1,16 @@
 import pyvisa
 
 class KeysightE36233A:
+    def fetch_all_voltages(self):
+        """Return list of voltages for all channels using FETC:VOLT? ALL."""
+        resp = self.inst.query("FETC:VOLT? ALL")
+        # Response is comma-separated values
+        return [float(x) for x in resp.strip().split(",")]
+
+    def fetch_all_currents(self):
+        """Return list of currents for all channels using FETC:CURR? ALL."""
+        resp = self.inst.query("FETC:CURR? ALL")
+        return [float(x) for x in resp.strip().split(",")]
     def __init__(self, visa_address):
         self.visa_address = visa_address
         self.rm = None

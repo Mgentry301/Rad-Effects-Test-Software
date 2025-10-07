@@ -5,6 +5,19 @@ from functools import partial
 
 
 class KeithleyPanel(QtWidgets.QWidget):
+    def get_all_readings(self):
+        """Return ([V1, V2, V3], [I1, I2, I3]) for all channels using fast FETC commands if available."""
+        if self.inst is None:
+            return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
+        try:
+            voltages = self.inst.fetch_all_voltages()
+        except Exception:
+            voltages = [0.0, 0.0, 0.0]
+        try:
+            currents = self.inst.fetch_all_currents()
+        except Exception:
+            currents = [0.0, 0.0, 0.0]
+        return voltages, currents
     def set_tab_name_callback(self, callback):
         self.name_edit.textChanged.connect(callback)
     """Panel for a Keithley 2230 instrument (uses keithley2230 wrapper)."""

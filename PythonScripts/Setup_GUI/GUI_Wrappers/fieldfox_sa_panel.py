@@ -7,14 +7,56 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
     def __init__(self, visa_address, parent=None):
         super().__init__(parent)
         self.sa = FieldFoxSA(visa_address)
-        self.sa.open()
         self.name_edit = QtWidgets.QLineEdit(visa_address)  # For tab naming compatibility
         self.init_ui()
         self.freq = None
         self.amplitudes = None
+        import threading
+        import queue
+        self._spectrum_buffer = queue.Queue(maxsize=1)
+        self._capture_thread_running = True
+        self._capture_thread = None
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_spectrum)
         self.timer.start(1000)  # update every second
+
+    def set_settings_enabled(self, enabled):
+        self.center_edit.setEnabled(enabled)
+        self.span_edit.setEnabled(enabled)
+        self.start_edit.setEnabled(enabled)
+        self.stop_edit.setEnabled(enabled)
+        self.unit_combo.setEnabled(enabled)
+        self.apply_btn.setEnabled(enabled)
+
+    def on_connect(self):
+        try:
+            self.sa.open()
+            self.status_label.setText("Connected")
+            self.set_settings_enabled(True)
+        except Exception:
+            self.status_label.setText("Connection Failed")
+            self.set_settings_enabled(False)
+        # Start capture thread only after connection
+        if self._capture_thread is None and self.sa.inst is not None:
+            import threading
+            def capture_thread():
+                unit = self.unit_combo.currentText()
+                try:
+                    freq = self.sa.get_freq_axis(unit)
+                except Exception:
+                    freq = None
+                while self._capture_thread_running:
+                    try:
+                        amplitudes = self.sa.capture_spectrum()
+                        if freq is not None and amplitudes is not None:
+                            if self._spectrum_buffer.full():
+                                self._spectrum_buffer.get()
+                            self._spectrum_buffer.put((freq, amplitudes))
+                    except Exception:
+                        pass
+                    import time; time.sleep(0.1)
+            self._capture_thread = threading.Thread(target=capture_thread, daemon=True)
+            self._capture_thread.start()
 
     def init_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -37,8 +79,13 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         layout.addWidget(self.apply_btn)
         self.canvas = SpectrumCanvas(self)
         layout.addWidget(self.canvas)
+        self.status_label = QtWidgets.QLabel("Disconnected")
+        layout.addWidget(self.status_label)
 
     def apply_settings(self):
+        if self.sa.inst is None:
+            QtWidgets.QMessageBox.warning(self, "Not Connected", "Instrument is not connected. Please connect first.")
+            return
         unit = self.unit_combo.currentText()
         center = self.center_edit.text().strip()
         span = self.span_edit.text().strip()
@@ -55,16 +102,17 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
 
     def update_spectrum(self):
         try:
-            self.freq = self.sa.get_freq_axis(self.unit_combo.currentText())
-            self.amplitudes = self.sa.capture_spectrum()
-            if self.freq is not None and self.amplitudes is not None:
-                self.canvas.plot(self.freq, self.amplitudes)
+            if not self._spectrum_buffer.empty():
+                self.freq, self.amplitudes = self._spectrum_buffer.get()
+                if self.freq is not None and self.amplitudes is not None:
+                    self.canvas.plot(self.freq, self.amplitudes)
         except Exception:
             pass
 
     def close(self):
         self.sa.close()
         self.timer.stop()
+        self._capture_thread_running = False
 
 class SpectrumCanvas(QtWidgets.QWidget):
     def __init__(self, parent=None):

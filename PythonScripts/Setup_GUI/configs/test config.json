@@ -1,0 +1,39 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "USB0::0x05E6::0x2230::9030930::INSTR",
+      "name": "keitheley 1",
+      "channels": {
+        "1": {
+          "voltage": "1.8",
+          "current": "0.2",
+          "output": true
+        },
+        "2": {
+          "voltage": "1.8",
+          "current": "0.1",
+          "output": true
+        },
+        "3": {
+          "voltage": "0.925",
+          "current": "0.5",
+          "output": true
+        }
+      }
+    },
+    {
+      "type": "RhodeSchwarz SMA",
+      "resource": "GPIB0::28::INSTR",
+      "name": "sma100b"
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "",
+      "name": "fieldfox"
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_code": ""
+}

@@ -14,6 +14,39 @@ import pyvisa
 
 
 class Keithley2230:
+    def fetch_all_voltages(self):
+        """Return list of voltages for all channels using FETC:VOLT? ALL or equivalent."""
+        # Try fast query; fallback to per-channel if not supported
+        try:
+            resp = self.res.query("FETC:VOLT? ALL")
+            return [float(x) for x in resp.strip().split(",")]
+        except Exception:
+            # Fallback: query each channel
+            vals = []
+            for ch in (1, 2, 3):
+                self._select_channel(ch)
+                try:
+                    v = float(self.res.query("MEAS:VOLT?").strip())
+                except Exception:
+                    v = 0.0
+                vals.append(v)
+            return vals
+
+    def fetch_all_currents(self):
+        """Return list of currents for all channels using FETC:CURR? ALL or equivalent."""
+        try:
+            resp = self.res.query("FETC:CURR? ALL")
+            return [float(x) for x in resp.strip().split(",")]
+        except Exception:
+            vals = []
+            for ch in (1, 2, 3):
+                self._select_channel(ch)
+                try:
+                    c = float(self.res.query("MEAS:CURR?").strip())
+                except Exception:
+                    c = 0.0
+                vals.append(c)
+            return vals
     def __init__(self, resource_string: str, timeout_ms: int = 5000):
         self.resource_string = resource_string
         self.rm = pyvisa.ResourceManager()

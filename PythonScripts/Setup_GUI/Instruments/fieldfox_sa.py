@@ -52,13 +52,10 @@ class FieldFoxSA:
         return freq
 
     def capture_spectrum(self):
-        trace_len = int(self.inst.query(":SWE:POIN?"))
         amplitudes = self.inst.query_binary_values(
             ":TRAC:DATA?",
             datatype="f",
             is_big_endian=False,
             container=np.array,
         )
-        if amplitudes.size != trace_len:
-            return None
         return amplitudes
