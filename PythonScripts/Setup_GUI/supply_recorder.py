@@ -40,6 +40,7 @@ class SupplyRecorder:
         self._stop_event.set()
         if self._thread:
             self._thread.join()
+        # Always flush and save buffer immediately
         self._flush_buffer()
 
     def _run(self):

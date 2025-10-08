@@ -33,8 +33,8 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             self.sa.open()
             self.status_label.setText("Connected")
             self.set_settings_enabled(True)
-        except Exception:
-            self.status_label.setText("Connection Failed")
+        except Exception as e:
+            self.status_label.setText(f"Connection Failed: {e}")
             self.set_settings_enabled(False)
         # Start capture thread only after connection
         if self._capture_thread is None and self.sa.inst is not None:
@@ -58,6 +58,10 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             self._capture_thread = threading.Thread(target=capture_thread, daemon=True)
             self._capture_thread.start()
 
+    def retry_connect(self):
+        # User can call this to retry connection
+        self.on_connect()
+
     def init_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
         form = QtWidgets.QFormLayout()
@@ -77,10 +81,15 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         self.apply_btn = QtWidgets.QPushButton("Apply Settings")
         self.apply_btn.clicked.connect(self.apply_settings)
         layout.addWidget(self.apply_btn)
+        self.connect_btn = QtWidgets.QPushButton("Connect to FieldFox")
+        self.connect_btn.clicked.connect(self.on_connect)
+        layout.addWidget(self.connect_btn)
+        self.status_label = QtWidgets.QLabel("Not Connected")
+        layout.addWidget(self.status_label)
         self.canvas = SpectrumCanvas(self)
         layout.addWidget(self.canvas)
-        self.status_label = QtWidgets.QLabel("Disconnected")
-        layout.addWidget(self.status_label)
+        # Disable settings until connected
+        self.set_settings_enabled(False)
 
     def apply_settings(self):
         if self.sa.inst is None:

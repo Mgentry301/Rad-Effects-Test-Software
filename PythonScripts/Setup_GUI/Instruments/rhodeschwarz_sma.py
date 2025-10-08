@@ -19,11 +19,31 @@ class RhodeSchwarzSMA:
             print(f"Error querying power: {e}")
             return None
     def set_output(self, on: bool):
-        """Turn output on or off."""
-        if on:
-            self.on()
-        else:
-            self.off()
+        """Turn output on or off, with auto-reconnect if session is invalid."""
+        try:
+            # Try to send command
+            if on:
+                self.on()
+            else:
+                self.off()
+        except Exception as e:
+            # If session is invalid, try to reconnect and retry
+            if 'Invalid session' in str(e) or 'closed' in str(e):
+                try:
+                    self.rm = pyvisa.ResourceManager()
+                    self.instr = self.rm.open_resource(self.addr)
+                    self.instr.timeout = 5000
+                    self.instr.write_termination = '\n'
+                    self.instr.read_termination = '\n'
+                    if on:
+                        self.on()
+                    else:
+                        self.off()
+                except Exception as e2:
+                    print(f"SMA reconnect failed: {e2}")
+                    raise e2
+            else:
+                raise e
     """
     Wrapper for Rhode & Schwarz SMA Signal Generator (USB connection).
     Provides methods to set frequency, power, and toggle RF output.

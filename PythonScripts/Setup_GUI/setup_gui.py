@@ -17,6 +17,8 @@ import json
 import tempfile
 import datetime
 
+import time
+
 from PyQt5 import QtWidgets, QtCore
 import pyvisa
 
@@ -30,76 +32,93 @@ from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
     def on_record_clicked(self):
-        """Toggle continuous spectrum recording (start/stop) and handle supply one-shot recording."""
-        # Use same Excel file as supply recording
-        excel_path = None
-        if hasattr(self, 'global_recorder') and self.global_recorder:
-            excel_path = self.global_recorder.excel_path
-
-
-
-        # Supply recording (manual trigger, not continuous)
-        if self.supply_record_toggle.isChecked():
-            panels = self.get_all_supply_panels()
-            if not panels:
-                self.statusBar().showMessage('No supply panels to record', 4000)
-            else:
+        """Unified record button: start/stop recording for selected metrics."""
+        if self.record_btn.isChecked():
+            excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Reads', '', 'Excel Files (*.xlsx)')[0]
+            if not excel_path:
+                return
+            # Start recording selected metrics
+            if self.supply_record_toggle.isChecked():
+                panels = self.get_all_supply_panels()
+                if not panels:
+                    self.statusBar().showMessage('No supply panels to record', 4000)
+                    return
                 from supply_recorder import SupplyRecorder
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                all_voltages = []
-                all_currents = []
-                for p in panels:
-                    v, c = p.get_all_readings()
-                    all_voltages.extend(v)
-                    all_currents.extend(c)
-                row = [now] + all_voltages + all_currents
-                try:
-                    import os
-                    from openpyxl import Workbook, load_workbook
-                    if os.path.exists(excel_path):
-                        wb = load_workbook(excel_path)
-                        if 'supply reads' in wb.sheetnames:
-                            ws = wb['supply reads']
-                        else:
-                            ws = wb.create_sheet('supply reads')
-                    else:
-                        wb = Workbook()
-                        ws = wb.active
-                        ws.title = 'supply reads'
-                        header = ['timestamp']
-                        for p in panels:
-                            v, c = p.get_all_readings()
-                            name = getattr(p, 'name_edit', None)
-                            if name and name.text().strip():
-                                pname = name.text().strip()
+                import time
+                def update_supply_read_speed(sps):
+                    self.supply_read_speed_label.setText(f'Supply Sample Rate: {sps:.2f} samples/sec')
+                class PatchedSupplyRecorder(SupplyRecorder):
+                    def _flush_buffer(self):
+                        if not self.buffer:
+                            return
+                        from openpyxl import Workbook, load_workbook
+                        import os
+                        header_needed = False
+                        if os.path.exists(self.excel_path):
+                            wb = load_workbook(self.excel_path)
+                            if self.sheet_name in wb.sheetnames:
+                                ws = wb[self.sheet_name]
                             else:
-                                pname = getattr(p, 'resource', 'Unknown')
-                            for i in range(len(v)):
-                                header.append(f"{pname} V{i+1}")
-                            for i in range(len(c)):
-                                header.append(f"{pname} I{i+1}")
-                        ws.append(header)
-                    ws.append(row)
-                    wb.save(excel_path)
-                    self.statusBar().showMessage('Supply data recorded', 3000)
-                except Exception as e:
-                    self.statusBar().showMessage(f'Supply record failed: {e}', 4000)
-
-        # --- Continuous Spectrum Recording ---
-        if self.spectrum_record_toggle.isChecked():
-            import threading
-            import time
-            if getattr(self, '_spectrum_recording', False):
-                # Stop recording
-                self._spectrum_recording = False
-                if hasattr(self, '_spectrum_thread') and self._spectrum_thread:
-                    self._spectrum_thread_running = False
-                    self._spectrum_thread.join(timeout=2)
-                    self._spectrum_thread = None
-                self.record_btn.setText('Record')
-                self.statusBar().showMessage('Stopped spectrum recording', 3000)
-            else:
-                # Start recording
+                                ws = wb.create_sheet(self.sheet_name)
+                                header_needed = True
+                        else:
+                            wb = Workbook()
+                            ws = wb.active
+                            ws.title = self.sheet_name
+                            header_needed = True
+                        if header_needed:
+                            # Dynamically build header based on first row
+                            if self.buffer:
+                                n_total = len(self.buffer[0])
+                                # 1 timestamp, then voltages, then currents
+                                n_volt = n_total // 2
+                                n_curr = n_total - n_volt - 1
+                                header = ['timestamp']
+                                header += [f'V{i+1}' for i in range(n_volt)]
+                                header += [f'I{i+1}' for i in range(n_curr)]
+                                ws.append(header)
+                        for row in self.buffer:
+                            ws.append(row)
+                        wb.save(self.excel_path)
+                        self.buffer.clear()
+                    def _run(self):
+                        sample_count = 0
+                        start_time = time.time()
+                        last_report_time = start_time
+                        self.last_perf_time = time.time()
+                        while not self._stop_event.is_set():
+                            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                            all_voltages = []
+                            all_currents = []
+                            for func in self.get_readings_funcs:
+                                voltages, currents = func()
+                                all_voltages.extend(voltages)
+                                all_currents.extend(currents)
+                            row = [now] + all_voltages + all_currents
+                            self.buffer.append(row)
+                            self.read_count += 1
+                            # Performance reporting every 10 seconds
+                            if time.time() - self.last_perf_time >= 10:
+                                avg_rps = self.read_count / (time.time() - self.last_perf_time)
+                                print(f"[SupplyRecorder] Average reads/sec: {avg_rps:.2f} over last 10 seconds")
+                                update_supply_read_speed(avg_rps)
+                                self.last_perf_time = time.time()
+                                self.read_count = 0
+                                self._flush_buffer()
+                            now = time.time()
+                            if now - last_report_time >= 1.0:
+                                sps = sample_count / (now - start_time)
+                                update_supply_read_speed(sps)
+                                last_report_time = now
+                            time.sleep(0.01)  # ~100Hz, adjust as needed
+                        self._flush_buffer()
+                self.global_recorder = PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
+                self.global_recorder.start()
+                self.statusBar().showMessage('Started recording supplies', 4000)
+            if self.spectrum_record_toggle.isChecked():
+                # --- Continuous Spectrum Recording ---
+                import threading
+                import time
                 fieldfox_panel = None
                 for i in range(self.tabs.count()):
                     w = self.tabs.widget(i)
@@ -109,14 +128,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 if fieldfox_panel is None:
                     self.statusBar().showMessage('No FieldFox panel found', 4000)
                     return
-                # Prompt for file only when starting recording
-                excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Select Excel File for Spectrum Recording', '', 'Excel Files (*.xlsx)')[0]
-                if not excel_path:
-                    self.statusBar().showMessage('No Excel file selected for spectrum recording', 4000)
-                    return
-                self._spectrum_recording = True
-                self.record_btn.setText('Stop Recording')
-                self.statusBar().showMessage('Started spectrum recording', 3000)
+                # Prompt for file only when starting recording (already done above)
+                def update_spectrum_read_speed(sps):
+                    self.spectrum_read_speed_label.setText(f'Spectrum Sample Rate: {sps:.2f} samples/sec')
                 def spectrum_capture_thread(panel, excel_path, running_flag_cb):
                     import os
                     from openpyxl import Workbook, load_workbook
@@ -130,26 +144,36 @@ class MainWindow(QtWidgets.QMainWindow):
                     sample_count = 0
                     start_time = time.time()
                     last_report_time = start_time
+                    buffer = []
+                    flush_interval = 100
+                    def flush_buffer():
+                        if not buffer:
+                            return
+                        if os.path.exists(excel_path):
+                            wb = load_workbook(excel_path)
+                            if 'capture data' in wb.sheetnames:
+                                ws = wb['capture data']
+                            else:
+                                ws = wb.create_sheet('capture data')
+                        else:
+                            wb = Workbook()
+                            ws = wb.active
+                            ws.title = 'capture data'
+                            header = ['timestamp'] + [f"{f:.6f}" for f in freq]
+                            ws.append(header)
+                        for row in buffer:
+                            ws.append(row)
+                        wb.save(excel_path)
+                        buffer.clear()
                     while running_flag_cb():
                         try:
                             amplitudes = panel.sa.capture_spectrum()
                             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                            if os.path.exists(excel_path):
-                                wb = load_workbook(excel_path)
-                                if 'capture data' in wb.sheetnames:
-                                    ws = wb['capture data']
-                                else:
-                                    ws = wb.create_sheet('capture data')
-                            else:
-                                wb = Workbook()
-                                ws = wb.active
-                                ws.title = 'capture data'
-                                header = ['timestamp'] + [f"{f:.6f}" for f in freq]
-                                ws.append(header)
                             row = [now] + [float(a) for a in amplitudes]
-                            ws.append(row)
-                            wb.save(excel_path)
+                            buffer.append(row)
                             sample_count += 1
+                            if len(buffer) >= flush_interval:
+                                flush_buffer()
                         except pyvisa.errors.InvalidSession:
                             break
                         except Exception as e:
@@ -163,15 +187,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         if now_time - last_report_time >= 2.0:
                             elapsed = now_time - start_time
                             avg_rate = sample_count / elapsed if elapsed > 0 else 0.0
-                            QtCore.QMetaObject.invokeMethod(
-                                self.read_speed_label,
-                                "setText",
-                                QtCore.Qt.QueuedConnection,
-                                QtCore.Q_ARG(str, f"Spectrum Rate: {avg_rate:.2f} samples/sec")
-                            )
+                            update_spectrum_read_speed(avg_rate)
                             last_report_time = now_time
                         # Minimal sleep for max speed
                         time.sleep(0.1)
+                    flush_buffer()
+                self._spectrum_recording = True
                 self._spectrum_thread_running = True
                 def running_flag():
                     return self._spectrum_recording and self._spectrum_thread_running
@@ -181,6 +202,22 @@ class MainWindow(QtWidgets.QMainWindow):
                     daemon=True
                 )
                 self._spectrum_thread.start()
+                self.statusBar().showMessage('Started recording spectrum', 4000)
+            self.record_btn.setText('Stop Recording')
+        else:
+            # Stop all recordings
+            if hasattr(self, 'global_recorder') and self.global_recorder:
+                self.global_recorder.stop()
+                self.global_recorder = None
+            # --- Stop Spectrum Recording ---
+            if hasattr(self, '_spectrum_thread') and self._spectrum_thread:
+                self._spectrum_recording = False
+                self._spectrum_thread_running = False
+                self._spectrum_thread.join(timeout=2)
+                self._spectrum_thread = None
+            self.record_btn.setText('Record')
+            self.statusBar().showMessage('Stopped recording', 4000)
+
     def add_instrument_panel(self, resource, label, inst_type):
         """Add a new instrument panel to the tabs based on resource, label, and instrument type."""
         panel = None
@@ -207,18 +244,19 @@ class MainWindow(QtWidgets.QMainWindow):
             panel.on_connect()
         self._auto_turn_off_panel(panel)
     def init_global_recorder_controls(self, parent_layout):
-        rec_row = QtWidgets.QHBoxLayout()
-        self.global_start_rec_btn = QtWidgets.QPushButton('Start Recording All Supplies')
-        self.global_stop_rec_btn = QtWidgets.QPushButton('Stop Recording')
-        self.global_stop_rec_btn.setEnabled(False)
-        self.global_start_rec_btn.clicked.connect(self.start_global_recording)
-        self.global_stop_rec_btn.clicked.connect(self.stop_global_recording)
-        rec_row.addWidget(self.global_start_rec_btn)
-        rec_row.addWidget(self.global_stop_rec_btn)
-        parent_layout.addLayout(rec_row)
-        # Add read speed display
-        self.read_speed_label = QtWidgets.QLabel('Read Speed: -- reads/sec')
-        parent_layout.addWidget(self.read_speed_label)
+        # Unified record button and toggles only
+        self.record_btn = QtWidgets.QPushButton('Record')
+        self.record_btn.setCheckable(True)
+        self.record_btn.clicked.connect(self.on_record_clicked)
+        self.supply_record_toggle = QtWidgets.QCheckBox('Record Supply Metrics')
+        self.spectrum_record_toggle = QtWidgets.QCheckBox('Record Spectrum Metrics')
+        self.supply_read_speed_label = QtWidgets.QLabel('Supply Sample Rate: --')
+        record_layout = QtWidgets.QHBoxLayout()
+        record_layout.addWidget(self.record_btn)
+        record_layout.addWidget(self.supply_record_toggle)
+        record_layout.addWidget(self.spectrum_record_toggle)
+        record_layout.addWidget(self.supply_read_speed_label)
+        parent_layout.addLayout(record_layout)
 
     def get_all_supply_panels(self):
         panels = []
@@ -228,57 +266,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 panels.append(w)
         return panels
 
-    def start_global_recording(self):
-        panels = self.get_all_supply_panels()
-        if not panels:
-            self.statusBar().showMessage('No supply panels to record', 4000)
-            return
-        from supply_recorder import SupplyRecorder
-        excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Supply Reads', '', 'Excel Files (*.xlsx)')[0]
-        if not excel_path:
-            return
-        def update_read_speed(rps):
-            self.read_speed_label.setText(f'Read Speed: {rps:.2f} reads/sec')
-        class PatchedSupplyRecorder(SupplyRecorder):
-            def _run(self):
-                import time
-                import datetime as dtmod
-                self.last_perf_time = time.time()
-                self.read_count = 0
-                while not self._stop_event.is_set():
-                    now = dtmod.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                    all_voltages = []
-                    all_currents = []
-                    for func in self.get_readings_funcs:
-                        voltages, currents = func()
-                        all_voltages.extend(voltages)
-                        all_currents.extend(currents)
-                    row = [now] + all_voltages + all_currents
-                    self.buffer.append(row)
-                    self.read_count += 1
-                    # Performance reporting every 10 seconds
-                    if time.time() - self.last_perf_time >= 10:
-                        avg_rps = self.read_count / (time.time() - self.last_perf_time)
-                        print(f"[SupplyRecorder] Average reads/sec: {avg_rps:.2f} over last 10 seconds")
-                        update_read_speed(avg_rps)
-                        self.last_perf_time = time.time()
-                        self.read_count = 0
-                        self._flush_buffer()
-                    time.sleep(0.01)  # ~100Hz, adjust as needed
-                self._flush_buffer()
-        self.global_recorder = PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
-        self.global_recorder.start()
-        self.global_start_rec_btn.setEnabled(False)
-        self.global_stop_rec_btn.setEnabled(True)
-        self.statusBar().showMessage('Started recording all supplies', 4000)
-
-    def stop_global_recording(self):
-        if hasattr(self, 'global_recorder') and self.global_recorder:
-            self.global_recorder.stop()
-            self.global_recorder = None
-            self.global_start_rec_btn.setEnabled(True)
-            self.global_stop_rec_btn.setEnabled(False)
-            self.statusBar().showMessage('Stopped recording', 4000)
+    # Removed global recording buttons and logic; unified record button handles all recording
     # helper to format timestamps for logs
     def _ts(self):
         return datetime.datetime.now().strftime('%H:%M:%S')
@@ -600,6 +588,94 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage(f'Reset part: powered off, will power on in {delay} seconds', 4000)
     def __init__(self):
         super().__init__()
+        # Apple liquid glass design stylesheet
+        self.setStyleSheet('''
+            QMainWindow {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e3eafc, stop:1 #cfd9df);
+            }
+            QWidget {
+                background: rgba(255,255,255,0.7);
+                border-radius: 16px;
+                font-family: "Segoe UI", "San Francisco", Arial, sans-serif;
+                font-size: 15px;
+                color: #222;
+            }
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+            }
+            QTabBar::tab {
+                background: rgba(255,255,255,0.6);
+                border-radius: 12px;
+                padding: 8px 24px;
+                margin: 4px;
+                font-weight: 500;
+                color: #222;
+            }
+            QTabBar::tab:selected {
+                background: rgba(255,255,255,0.85);
+                color: #007aff;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #fafdff, stop:1 #e3eafc);
+                border-radius: 12px;
+                border: 1px solid #d1d5db;
+                padding: 8px 20px;
+                font-size: 15px;
+                color: #222;
+                font-weight: 500;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }
+            QPushButton:hover {
+                background: #e3eafc;
+                color: #007aff;
+            }
+            QPushButton:pressed {
+                background: #cfd9df;
+                color: #007aff;
+            }
+            QCheckBox {
+                font-size: 15px;
+                padding: 4px 12px;
+                border-radius: 8px;
+                background: rgba(255,255,255,0.5);
+            }
+            QLabel {
+                font-size: 15px;
+                color: #222;
+                background: transparent;
+            }
+            QLineEdit {
+                background: rgba(255,255,255,0.8);
+                border-radius: 8px;
+                border: 1px solid #d1d5db;
+                padding: 6px 12px;
+                font-size: 15px;
+            }
+            QPlainTextEdit {
+                background: rgba(255,255,255,0.8);
+                border-radius: 12px;
+                border: 1px solid #d1d5db;
+                font-size: 15px;
+                padding: 8px;
+            }
+            QComboBox {
+                background: rgba(255,255,255,0.8);
+                border-radius: 8px;
+                border: 1px solid #d1d5db;
+                font-size: 15px;
+                padding: 6px 12px;
+            }
+            QStatusBar {
+                background: rgba(255,255,255,0.6);
+                border-top: 1px solid #d1d5db;
+                font-size: 14px;
+                color: #222;
+            }
+        ''')
         # runtime control state for sequencing/program runs
         self._sequence_abort_flag = False
         self.program_process = None
@@ -733,31 +809,25 @@ class MainWindow(QtWidgets.QMainWindow):
         tpower_row.addWidget(self.test_tab_power_btn)
         test2_layout.addLayout(tpower_row)
 
-        # --- New Record Controls ---
+        # --- Unified Record Controls ---
         record_row = QtWidgets.QHBoxLayout()
         self.record_btn = QtWidgets.QPushButton('Record')
+        self.record_btn.setCheckable(True)
+        self.record_btn.setChecked(False)
         self.record_btn.clicked.connect(self.on_record_clicked)
         record_row.addWidget(self.record_btn)
-        self.supply_record_toggle = QtWidgets.QCheckBox('Supply Recording')
+        self.supply_record_toggle = QtWidgets.QCheckBox('Supply')
         self.supply_record_toggle.setChecked(True)
         record_row.addWidget(self.supply_record_toggle)
-        self.spectrum_record_toggle = QtWidgets.QCheckBox('Spectrum Recording')
+        self.spectrum_record_toggle = QtWidgets.QCheckBox('Spectrum')
         self.spectrum_record_toggle.setChecked(False)
         record_row.addWidget(self.spectrum_record_toggle)
+        self.supply_read_speed_label = QtWidgets.QLabel('Supply Sample Rate: --')
+        self.spectrum_read_speed_label = QtWidgets.QLabel('Spectrum Sample Rate: --')
+        record_row.addWidget(self.supply_read_speed_label)
+        record_row.addWidget(self.spectrum_read_speed_label)
+        # Add more toggles here for future metrics
         test2_layout.addLayout(record_row)
-
-        # Add global recorder controls to test tab
-        rec_row = QtWidgets.QHBoxLayout()
-        self.global_start_rec_btn = QtWidgets.QPushButton('Start Recording All Supplies')
-        self.global_stop_rec_btn = QtWidgets.QPushButton('Stop Recording')
-        self.global_stop_rec_btn.setEnabled(False)
-        self.global_start_rec_btn.clicked.connect(self.start_global_recording)
-        self.global_stop_rec_btn.clicked.connect(self.stop_global_recording)
-        rec_row.addWidget(self.global_start_rec_btn)
-        rec_row.addWidget(self.global_stop_rec_btn)
-        test2_layout.addLayout(rec_row)
-        self.read_speed_label = QtWidgets.QLabel('Read Speed: -- reads/sec')
-        test2_layout.addWidget(self.read_speed_label)
 
         # Program / Reprogram button
         prog_row = QtWidgets.QHBoxLayout()
@@ -1118,7 +1188,27 @@ class MainWindow(QtWidgets.QMainWindow):
         for entry in instruments:
             inst_type = entry.get('type', 'Keithley 2230')
             resource = entry.get('resource', '')
-            if resource and resource not in current_resources:
+            # For FieldFox: if resource not available, auto-connect to another available FieldFox
+            if inst_type == 'Keysight FieldFox' and (not resource or resource not in current_resources):
+                try:
+                    # Scan for available FieldFox devices
+                    candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
+                except Exception:
+                    candidates = []
+                if candidates:
+                    # Auto-select first available FieldFox
+                    resource = candidates[0][1]
+                    self.statusBar().showMessage(f'FieldFox resource not found in config, auto-connected to: {resource}', 4000)
+                else:
+                    resp = QtWidgets.QMessageBox.question(
+                        self, 'Instrument missing',
+                        f'Instrument {resource} of type {inst_type} not found and no FieldFox replacements available.\nSkip this instrument? (No = cancel load)',
+                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
+                    if resp == QtWidgets.QMessageBox.No:
+                        return
+                    else:
+                        continue
+            elif resource and resource not in current_resources:
                 try:
                     candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
                 except Exception:
@@ -1185,7 +1275,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         if inst_type == 'Keysight FieldFox':
                             # Delay FieldFox connection to allow VISA to initialize
-                            QtCore.QTimer.singleShot(500, panel.on_connect)
+                            QtCore.QTimer.singleShot(1000, panel.on_connect)
                         else:
                             panel.on_connect()
                     except Exception:
@@ -1208,54 +1298,26 @@ class MainWindow(QtWidgets.QMainWindow):
                             except Exception:
                                 pass
                 elif inst_type == 'Keysight EL34243A':
-                    for ch in (1, 2):
-                        ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
-                        if ch_cfg:
-                            try:
-                                panel.ch_select.setCurrentIndex(ch - 1)
-                                panel.mode_combo.setCurrentText(ch_cfg.get('mode', 'CC'))
-                                panel.mode_value.setText(str(ch_cfg.get('value', '0.1')))
-                                panel.input_toggle.setChecked(bool(ch_cfg.get('input', False)))
-                                panel.input_toggle.setText('Input On' if ch_cfg.get('input', False) else 'Input Off')
-                                # Set instrument input state if connected
-                                if getattr(panel, 'dev', None):
-                                    panel.dev.set_mode(ch, ch_cfg.get('mode', 'CC'))
-                                    panel.dev.set_parameter(ch, ch_cfg.get('mode', 'CC'), float(ch_cfg.get('value', '0.1')))
-                                    panel.dev.set_input(ch, bool(ch_cfg.get('input', False)))
-                            except Exception:
-                                pass
-                elif inst_type == 'Keysight E36233A':
-                    for ch in (1, 2):
-                        ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
-                        if ch_cfg:
-                            try:
-                                panel.voltage_edit.setText(str(ch_cfg.get('voltage', '0')))
-                                panel.current_edit.setText(str(ch_cfg.get('current', '0.03')))
-                                panel.onoff_btn.setChecked(bool(ch_cfg.get('output', False)))
-                                panel.onoff_btn.setText('Output On' if ch_cfg.get('output', False) else 'Output Off')
-                                if getattr(panel, 'inst', None):
-                                    panel.inst.set_voltage(ch, float(ch_cfg.get('voltage', '0')))
-                                    panel.inst.set_current(ch, float(ch_cfg.get('current', '0.03')))
-                                    panel.inst.set_output(ch, bool(ch_cfg.get('output', False)))
-                            except Exception:
-                                pass
-                elif inst_type == 'Hittite Sig Gen':
-                    # If config includes output state, set it
+                    # Use the same logic as manual add for all instruments
+                    tab_label = entry.get('name', resource)
+                    self.add_instrument_panel(resource, tab_label, inst_type)
+                    # After panel is added, set per-panel settings as before
+                    panel = self.tabs.widget(self.tabs.count() - 1)
+                    used_resources.add(resource)
+                    if hasattr(panel, 'resource_edit'):
+                        panel.resource_edit.setText(resource)
+                    if hasattr(panel, 'name_edit'):
+                        panel.name_edit.setText(tab_label)
                     try:
-                        output_state = entry.get('output', False)
-                        panel.output_btn.setChecked(bool(output_state))
-                        panel.output_btn.setText('Output On' if output_state else 'Output Off')
-                        if getattr(panel, 'dev', None):
-                            panel.dev.set_output(bool(output_state))
+                        name_val = entry.get('name') if isinstance(entry, dict) else None
+                        if name_val and hasattr(panel, 'name_edit'):
+                            panel.name_edit.setText(name_val)
                     except Exception:
                         pass
-                elif inst_type == 'RhodeSchwarz SMA':
-                    try:
-                        settings = entry.get('settings', {})
-                        freq = settings.get('frequency')
-                        freq_unit = settings.get('freq_unit')
                         power = settings.get('power')
                         output_state = settings.get('output', False)
+                        freq = settings.get('freq') if 'freq' in settings else None
+                        freq_unit = settings.get('freq_unit') if 'freq_unit' in settings else None
                         if freq is not None:
                             panel.freq_edit.setText(str(freq))
                         if freq_unit is not None:
