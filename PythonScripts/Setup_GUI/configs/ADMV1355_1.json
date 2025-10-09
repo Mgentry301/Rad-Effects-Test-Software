@@ -1,0 +1,57 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "USB0::0x05E6::0x2230::9201602::INSTR",
+      "name": "k0",
+      "channels": {
+        "1": {
+          "voltage": "3.0",
+          "current": "0.8",
+          "output": true
+        },
+        "2": {
+          "voltage": "1.8",
+          "current": "0.8",
+          "output": true
+        },
+        "3": {
+          "voltage": "1.8",
+          "current": "2.0",
+          "output": true
+        }
+      }
+    },
+    {
+      "type": "RhodeSchwarz SMA",
+      "resource": "GPIB0::28::INSTR",
+      "name": "IF HYB",
+      "settings": {
+        "frequency": "8",
+        "freq_unit": "GHz",
+        "power": "-20",
+        "output": true
+      }
+    },
+    {
+      "type": "Unknown",
+      "resource": "GPIB0::16::INSTR",
+      "name": "LO"
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "",
+      "name": "Fieldfox",
+      "settings": {
+        "center": "4.0",
+        "span": "8.0",
+        "start": "",
+        "stop": "",
+        "unit": "GHz"
+      }
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_code": ""
+}

@@ -1,5 +1,6 @@
 import pyvisa
 import numpy as np
+import time
 
 class FieldFoxSA:
     def __init__(self, visa_address):
@@ -15,9 +16,15 @@ class FieldFoxSA:
             read_termination=None,
             write_termination="\n",
         )
-        self.inst.write(":INST:SEL 'SA'")
-        self.inst.write(":INIT:CONT ON")
-        self.inst.write(":FORM:DATA REAL,32")
+        # Basic initialization with small waits to let mode settle
+        try:
+            self.inst.write(":INST:SEL 'SA'")
+            self.inst.write(":INIT:CONT ON")
+            self.inst.write(":FORM:DATA REAL,32")  # binary little-endian float
+            # Ensure trace points known
+            _ = self.inst.query(":SWE:POIN?")
+        except Exception:
+            pass
 
     def close(self):
         if self.inst:
@@ -52,10 +59,30 @@ class FieldFoxSA:
         return freq
 
     def capture_spectrum(self):
-        amplitudes = self.inst.query_binary_values(
-            ":TRAC:DATA?",
-            datatype="f",
-            is_big_endian=False,
-            container=np.array,
-        )
-        return amplitudes
+        if self.inst is None:
+            raise RuntimeError("Instrument not open")
+        last_exc = None
+        # Try binary up to 3 times
+        for _ in range(3):
+            try:
+                return self.inst.query_binary_values(
+                    ":TRAC:DATA?",
+                    datatype="f",
+                    is_big_endian=False,
+                    container=np.array,
+                )
+            except pyvisa.VisaIOError as e:
+                last_exc = e
+                time.sleep(0.05)
+            except Exception as e:  # malformed block, fallback
+                last_exc = e
+                break
+        # Fallback to ASCII if binary failed
+        try:
+            txt = self.inst.query(":TRAC:DATA?")
+            parts = [p for p in txt.replace("\n"," ").split(',') if p.strip()]
+            return np.array([float(p) for p in parts])
+        except Exception:
+            if last_exc:
+                raise last_exc
+            raise

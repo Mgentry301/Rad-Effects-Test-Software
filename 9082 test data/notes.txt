@@ -1,4 +1,0 @@
-- the last 3 runs, run 5, 6 were with the tungsten and thus shielded the ads9
-- 4, 5, 6 were run to 1e7
-- run 4 experienced ads9 reset problems
-- run 4 was stopped at 33% to meet nucleon customer needs

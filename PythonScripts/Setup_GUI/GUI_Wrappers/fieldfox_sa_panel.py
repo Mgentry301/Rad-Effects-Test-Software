@@ -36,27 +36,37 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         except Exception as e:
             self.status_label.setText(f"Connection Failed: {e}")
             self.set_settings_enabled(False)
-        # Start capture thread only after connection
-        if self._capture_thread is None and self.sa.inst is not None:
-            import threading
-            def capture_thread():
-                unit = self.unit_combo.currentText()
+        # Start capture thread
+        self.start_capture_thread()
+
+    def start_capture_thread(self):
+        """Idempotently start spectrum capture thread (safe to call multiple times)."""
+        if self._capture_thread is not None:
+            return
+        if self.sa.inst is None:
+            return
+        import threading, time
+        def capture_thread():
+            unit = self.unit_combo.currentText()
+            try:
+                freq = self.sa.get_freq_axis(unit)
+            except Exception:
+                freq = None
+            while self._capture_thread_running:
                 try:
-                    freq = self.sa.get_freq_axis(unit)
+                    amplitudes = self.sa.capture_spectrum()
+                    if freq is not None and amplitudes is not None:
+                        if self._spectrum_buffer.full():
+                            try:
+                                self._spectrum_buffer.get_nowait()
+                            except Exception:
+                                pass
+                        self._spectrum_buffer.put((freq, amplitudes))
                 except Exception:
-                    freq = None
-                while self._capture_thread_running:
-                    try:
-                        amplitudes = self.sa.capture_spectrum()
-                        if freq is not None and amplitudes is not None:
-                            if self._spectrum_buffer.full():
-                                self._spectrum_buffer.get()
-                            self._spectrum_buffer.put((freq, amplitudes))
-                    except Exception:
-                        pass
-                    import time; time.sleep(0.1)
-            self._capture_thread = threading.Thread(target=capture_thread, daemon=True)
-            self._capture_thread.start()
+                    pass
+                time.sleep(0.15)
+        self._capture_thread = threading.Thread(target=capture_thread, daemon=True)
+        self._capture_thread.start()
 
     def retry_connect(self):
         # User can call this to retry connection

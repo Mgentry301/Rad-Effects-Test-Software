@@ -16,8 +16,8 @@ import os
 import json
 import tempfile
 import datetime
-
 import time
+from typing import List, Tuple
 
 from PyQt5 import QtWidgets, QtCore
 import pyvisa
@@ -31,6 +31,58 @@ from GUI_Wrappers.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
 from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
+    # --- Internal helpers to reduce duplication ---
+    def _keithley_apply_settings(self, panel: KeithleyPanel, on: bool):
+        if not getattr(panel, 'inst', None):
+            return
+        for ch in (1, 2, 3):
+            try:
+                if on:
+                    V = float(panel.vol_edits[ch].text())
+                    I = float(panel.iam_edits[ch].text())
+                    panel.inst.set_voltage(ch, V)
+                    panel.inst.set_current(ch, I)
+                    panel.inst.set_output(ch, True)
+                else:
+                    panel.inst.set_output(ch, False)
+            except Exception:
+                pass
+        panel.master_out_btn.setChecked(on)
+        panel.master_out_btn.setText('All On' if on else 'All Off')
+
+    def _keysight_el_apply_settings(self, panel: KeysightELPanel, on: bool):
+        if not getattr(panel, 'dev', None):
+            return
+        for ch in (1, 2):
+            if hasattr(panel, 'ch_enabled') and not panel.ch_enabled[ch].isChecked():
+                continue
+            try:
+                if on:
+                    mode = panel.mode_combo.currentText()
+                    value = float(panel.mode_value.text())
+                    panel.dev.set_mode(ch, mode)
+                    panel.dev.set_parameter(ch, mode, value)
+                    panel.dev.set_input(ch, True)
+                else:
+                    panel.dev.set_input(ch, False)
+            except Exception:
+                pass
+        panel.input_toggle.setChecked(on)
+        panel.input_toggle.setText('Input On' if on else 'Input Off')
+
+    def _generic_output_toggle(self, panel, on: bool):
+        dev = getattr(panel, 'dev', None)
+        if not dev:
+            return
+        try:
+            dev.set_output(on)
+            if hasattr(panel, 'output_btn'):
+                panel.output_btn.setChecked(on)
+                panel.output_btn.setText('Output On' if on else 'Output Off')
+            if hasattr(panel, 'status_label'):
+                panel.status_label.setText('Output ON' if on else 'Output OFF')
+        except Exception:
+            pass
     def on_record_clicked(self):
         """Unified record button: start/stop recording for selected metrics."""
         if self.record_btn.isChecked():
@@ -44,7 +96,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.statusBar().showMessage('No supply panels to record', 4000)
                     return
                 from supply_recorder import SupplyRecorder
-                import time
                 def update_supply_read_speed(sps):
                     self.supply_read_speed_label.setText(f'Supply Sample Rate: {sps:.2f} samples/sec')
                 class PatchedSupplyRecorder(SupplyRecorder):
@@ -116,9 +167,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.global_recorder.start()
                 self.statusBar().showMessage('Started recording supplies', 4000)
             if self.spectrum_record_toggle.isChecked():
-                # --- Continuous Spectrum Recording ---
+                # Continuous Spectrum Recording
                 import threading
-                import time
                 fieldfox_panel = None
                 for i in range(self.tabs.count()):
                     w = self.tabs.widget(i)
@@ -128,80 +178,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 if fieldfox_panel is None:
                     self.statusBar().showMessage('No FieldFox panel found', 4000)
                     return
-                # Prompt for file only when starting recording (already done above)
-                def update_spectrum_read_speed(sps):
+                def update_spectrum_read_speed(sps: float):
                     self.spectrum_read_speed_label.setText(f'Spectrum Sample Rate: {sps:.2f} samples/sec')
-                def spectrum_capture_thread(panel, excel_path, running_flag_cb):
-                    import os
-                    from openpyxl import Workbook, load_workbook
-                    import pyvisa
-                    import time
-                    freq = []
-                    try:
-                        freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
-                    except Exception:
-                        pass
-                    sample_count = 0
-                    start_time = time.time()
-                    last_report_time = start_time
-                    buffer = []
-                    flush_interval = 100
-                    def flush_buffer():
-                        if not buffer:
-                            return
-                        if os.path.exists(excel_path):
-                            wb = load_workbook(excel_path)
-                            if 'capture data' in wb.sheetnames:
-                                ws = wb['capture data']
-                            else:
-                                ws = wb.create_sheet('capture data')
-                        else:
-                            wb = Workbook()
-                            ws = wb.active
-                            ws.title = 'capture data'
-                            header = ['timestamp'] + [f"{f:.6f}" for f in freq]
-                            ws.append(header)
-                        for row in buffer:
-                            ws.append(row)
-                        wb.save(excel_path)
-                        buffer.clear()
-                    while running_flag_cb():
-                        try:
-                            amplitudes = panel.sa.capture_spectrum()
-                            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                            row = [now] + [float(a) for a in amplitudes]
-                            buffer.append(row)
-                            sample_count += 1
-                            if len(buffer) >= flush_interval:
-                                flush_buffer()
-                        except pyvisa.errors.InvalidSession:
-                            break
-                        except Exception as e:
-                            # Handle FieldFox -410 Query Interrupted error gracefully
-                            if hasattr(e, 'args') and e.args and ('-410' in str(e.args[0]) or 'Query Interrupted' in str(e)):
-                                pass  # skip this cycle, immediately retry
-                            else:
-                                pass  # ignore other errors
-                        # Update sample rate every 2 seconds
-                        now_time = time.time()
-                        if now_time - last_report_time >= 2.0:
-                            elapsed = now_time - start_time
-                            avg_rate = sample_count / elapsed if elapsed > 0 else 0.0
-                            update_spectrum_read_speed(avg_rate)
-                            last_report_time = now_time
-                        # Minimal sleep for max speed
-                        time.sleep(0.1)
-                    flush_buffer()
+                self._start_spectrum_capture(fieldfox_panel, excel_path, update_spectrum_read_speed)
                 self._spectrum_recording = True
                 self._spectrum_thread_running = True
                 def running_flag():
                     return self._spectrum_recording and self._spectrum_thread_running
-                self._spectrum_thread = threading.Thread(
-                    target=spectrum_capture_thread,
-                    args=(fieldfox_panel, excel_path, running_flag),
-                    daemon=True
-                )
-                self._spectrum_thread.start()
+                # Thread was created inside helper
                 self.statusBar().showMessage('Started recording spectrum', 4000)
             self.record_btn.setText('Stop Recording')
         else:
@@ -217,6 +201,68 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._spectrum_thread = None
             self.record_btn.setText('Record')
             self.statusBar().showMessage('Stopped recording', 4000)
+
+    def _start_spectrum_capture(self, panel: FieldFoxSAPanel, excel_path: str, rate_cb):
+        """Start spectrum capture in background thread."""
+        import threading
+        from openpyxl import Workbook, load_workbook
+        import os
+        try:
+            freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
+        except Exception:
+            freq = []
+        buffer = []
+        flush_interval = 100
+        start_time = time.time()
+        last_report_time = start_time
+        sample_count = 0
+        def flush_buffer():
+            if not buffer:
+                return
+            if os.path.exists(excel_path):
+                wb = load_workbook(excel_path)
+                if 'capture data' in wb.sheetnames:
+                    ws = wb['capture data']
+                else:
+                    ws = wb.create_sheet('capture data')
+            else:
+                wb = Workbook()
+                ws = wb.active
+                ws.title = 'capture data'
+                header = ['timestamp'] + [f"{f:.6f}" for f in freq]
+                ws.append(header)
+            for row in buffer:
+                ws.append(row)
+            wb.save(excel_path)
+            buffer.clear()
+        def running_flag():
+            return getattr(self, '_spectrum_recording', False) and getattr(self, '_spectrum_thread_running', False)
+        def worker():
+            nonlocal sample_count, last_report_time
+            import pyvisa
+            while running_flag():
+                try:
+                    amplitudes = panel.sa.capture_spectrum()
+                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    row = [now] + [float(a) for a in amplitudes]
+                    buffer.append(row)
+                    sample_count += 1
+                    if len(buffer) >= flush_interval:
+                        flush_buffer()
+                except pyvisa.errors.InvalidSession:
+                    break
+                except Exception as e:
+                    if hasattr(e, 'args') and e.args and ('-410' in str(e.args[0]) or 'Query Interrupted' in str(e)):
+                        pass
+                now_time = time.time()
+                if now_time - last_report_time >= 2.0:
+                    elapsed = now_time - start_time
+                    rate_cb(sample_count / elapsed if elapsed > 0 else 0.0)
+                    last_report_time = now_time
+                time.sleep(0.1)
+            flush_buffer()
+        self._spectrum_thread = threading.Thread(target=worker, daemon=True)
+        self._spectrum_thread.start()
 
     def add_instrument_panel(self, resource, label, inst_type):
         """Add a new instrument panel to the tabs based on resource, label, and instrument type."""
@@ -235,6 +281,16 @@ class MainWindow(QtWidgets.QMainWindow):
             panel = FieldFoxSAPanel(resource)
         else:
             panel = KeithleyPanel(resource)
+        # Ensure a canonical 'resource' attribute exists for all panels so it can be saved
+        try:
+            if not hasattr(panel, 'resource') or not getattr(panel, 'resource'):
+                # FieldFox panel stores address inside panel.sa.visa_address
+                if isinstance(panel, FieldFoxSAPanel) and hasattr(panel, 'sa'):
+                    panel.resource = panel.sa.visa_address
+                else:
+                    panel.resource = resource
+        except Exception:
+            pass
         self.tabs.addTab(panel, label)
         if hasattr(panel, 'resource_edit'):
             panel.resource_edit.setText(resource)
@@ -243,20 +299,6 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(panel, 'on_connect'):
             panel.on_connect()
         self._auto_turn_off_panel(panel)
-    def init_global_recorder_controls(self, parent_layout):
-        # Unified record button and toggles only
-        self.record_btn = QtWidgets.QPushButton('Record')
-        self.record_btn.setCheckable(True)
-        self.record_btn.clicked.connect(self.on_record_clicked)
-        self.supply_record_toggle = QtWidgets.QCheckBox('Record Supply Metrics')
-        self.spectrum_record_toggle = QtWidgets.QCheckBox('Record Spectrum Metrics')
-        self.supply_read_speed_label = QtWidgets.QLabel('Supply Sample Rate: --')
-        record_layout = QtWidgets.QHBoxLayout()
-        record_layout.addWidget(self.record_btn)
-        record_layout.addWidget(self.supply_record_toggle)
-        record_layout.addWidget(self.spectrum_record_toggle)
-        record_layout.addWidget(self.supply_read_speed_label)
-        parent_layout.addLayout(record_layout)
 
     def get_all_supply_panels(self):
         panels = []
@@ -272,156 +314,114 @@ class MainWindow(QtWidgets.QMainWindow):
         return datetime.datetime.now().strftime('%H:%M:%S')
 
     def _log(self, msg: str):
-        try:
-            txt = f'[{self._ts()}] {msg}'
-            if hasattr(self, 'test_log'):
-                self.test_log.appendPlainText(txt)
-            else:
-                # fallback to status bar
-                self.statusBar().showMessage(msg, 4000)
-        except Exception:
-            pass
+        txt = f'[{self._ts()}] {msg}'
+        if hasattr(self, 'test_log'):
+            self.test_log.appendPlainText(txt)
+        else:
+            self.statusBar().showMessage(msg, 4000)
 
     def on_abort_clicked(self):
-        # Set abort flag; running _run_power_sequence checks this flag and stops.
         self._sequence_abort_flag = True
         self._log('Abort requested')
-        # Terminate any running program process
-        try:
-            if getattr(self, 'program_process', None) is not None:
-                proc = self.program_process
+        if getattr(self, 'program_process', None) is not None:
+            proc = self.program_process
+            try:
+                proc.kill()
+            except Exception:
                 try:
-                    proc.kill()
+                    proc.terminate()
                 except Exception:
-                    try:
-                        proc.terminate()
-                    except Exception:
-                        pass
-                self.program_process = None
-                self._log('Program process terminated')
-        except Exception:
-            pass
+                    pass
+            self.program_process = None
+            self._log('Program process terminated')
 
     def _auto_turn_off_panel(self, panel):
-        """Safely turn off outputs/inputs for a single panel after it's added.
-        Used to ensure newly-added instruments don't power outputs unexpectedly.
-        """
-        try:
-            if isinstance(panel, KeithleyPanel):
-                if getattr(panel, 'inst', None):
-                    try:
-                        for ch in (1, 2, 3):
-                            panel.inst.set_output(ch, False)
-                    except Exception:
-                        pass
+        """Safely turn off outputs/inputs for a newly added panel."""
+        if isinstance(panel, KeithleyPanel) and getattr(panel, 'inst', None):
+            for ch in (1, 2, 3):
                 try:
-                    panel.master_out_btn.setChecked(False)
-                    panel.master_out_btn.setText('All Off')
+                    panel.inst.set_output(ch, False)
                 except Exception:
                     pass
-            elif isinstance(panel, HittiteSigGenPanel):
-                if getattr(panel, 'dev', None):
-                    try:
-                        panel.dev.set_output(False)
-                    except Exception:
-                        pass
+            panel.master_out_btn.setChecked(False)
+            panel.master_out_btn.setText('All Off')
+        elif isinstance(panel, HittiteSigGenPanel) and getattr(panel, 'dev', None):
+            try:
+                panel.dev.set_output(False)
+            except Exception:
+                pass
+            panel.output_btn.setChecked(False)
+            panel.output_btn.setText('Output Off')
+        elif isinstance(panel, KeysightELPanel) and getattr(panel, 'dev', None):
+            for ch in (1, 2):
+                if hasattr(panel, 'ch_enabled') and not panel.ch_enabled[ch].isChecked():
+                    continue
                 try:
-                    panel.output_btn.setChecked(False)
-                    panel.output_btn.setText('Output Off')
+                    panel.dev.set_input(ch, False)
                 except Exception:
                     pass
-            elif isinstance(panel, KeysightELPanel):
-                if getattr(panel, 'dev', None):
-                    try:
-                        for ch in (1, 2):
-                            if hasattr(panel, 'ch_enabled') and not panel.ch_enabled[ch].isChecked():
-                                continue
-                            try:
-                                panel.dev.set_input(ch, False)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                try:
-                    panel.input_toggle.setChecked(False)
-                    panel.input_toggle.setText('Input Off')
-                except Exception:
-                    pass
-            elif isinstance(panel, RhodeSchwarzSMAPanel):
-                if getattr(panel, 'dev', None):
-                    try:
-                        panel.dev.set_output(False)
-                    except Exception:
-                        pass
-                try:
-                    panel.output_btn.setChecked(False)
-                    panel.output_btn.setText('Output Off')
-                except Exception:
-                    pass
-            elif isinstance(panel, FieldFoxSAPanel):
-                if getattr(panel, 'dev', None):
-                    try:
-                        panel.dev.set_output(False)
-                    except Exception:
-                        pass
-                try:
-                    panel.output_btn.setChecked(False)
-                    panel.output_btn.setText('Output Off')
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            panel.input_toggle.setChecked(False)
+            panel.input_toggle.setText('Input Off')
+        elif isinstance(panel, RhodeSchwarzSMAPanel) and getattr(panel, 'dev', None):
+            try:
+                panel.dev.set_output(False)
+            except Exception:
+                pass
+            panel.output_btn.setChecked(False)
+            panel.output_btn.setText('Output Off')
+        elif isinstance(panel, FieldFoxSAPanel) and getattr(panel, 'dev', None):
+            try:
+                panel.dev.set_output(False)
+            except Exception:
+                pass
+            panel.output_btn.setChecked(False)
+            panel.output_btn.setText('Output Off')
 
-    def _find_replacement_candidates(self, saved_resource, inst_type_hint, rm: pyvisa.ResourceManager = None):
-        """Return a list of candidate resources found on the system that appear to match
-        the requested instrument type. Each item is (label, resource, inst_type_string).
-        """
-        found = []
-        try:
-            if rm is None:
+    def _find_replacement_candidates(self, saved_resource: str, inst_type_hint: str, rm: pyvisa.ResourceManager = None) -> List[Tuple[str, str, str]]:
+        """Return list of (label, resource, inst_type) candidates matching inst_type_hint."""
+        candidates: List[Tuple[str, str, str]] = []
+        if rm is None:
+            try:
                 rm = pyvisa.ResourceManager()
+            except Exception:
+                return candidates
+        try:
             resources = rm.list_resources()
         except Exception:
-            return found
-
+            return candidates
         for res in resources:
             try:
                 dev = rm.open_resource(res, timeout=1000)
-                idn = ''
                 try:
                     idn = dev.query('*IDN?')
                 except Exception:
                     idn = ''
-                try:
-                    dev.close()
-                except Exception:
-                    pass
-                lidn = idn.upper() if idn else ''
-                label = res.split('::')[3] if '::' in res else res
-                # try to classify
-                t = 'Unknown'
-                if 'KEITHLEY' in lidn or '2230' in res.upper() or 'KEITHLEY' in res.upper():
-                    t = 'Keithley 2230'
-                elif 'KEYSIGHT' in lidn or 'AGILENT' in lidn or 'EL34243' in lidn.upper():
-                    t = 'Keysight EL34243A'
-                elif 'KEYSIGHT' in lidn or 'E36233A' in lidn.upper():
-                    t = 'Keysight E36233A'
-                elif 'HITTITE' in lidn or 'SIG GEN' in lidn or 'HITTITE' in res.upper():
-                    t = 'Hittite Sig Gen'
+                finally:
+                    try:
+                        dev.close()
+                    except Exception:
+                        pass
+                lidn = idn.upper()
+                inst_type = 'Unknown'
+                if 'KEITHLEY' in lidn or '2230' in lidn:
+                    inst_type = 'Keithley 2230'
+                elif 'EL34243' in lidn or ('KEYSIGHT' in lidn and 'ELECTRONIC LOAD' in lidn):
+                    inst_type = 'Keysight EL34243A'
+                elif 'E36233A' in lidn:
+                    inst_type = 'Keysight E36233A'
+                elif 'HITTITE' in lidn or 'SIG GEN' in lidn:
+                    inst_type = 'Hittite Sig Gen'
                 elif 'ROHDE' in lidn or 'SCHWARZ' in lidn or 'SMA' in lidn:
-                    t = 'RhodeSchwarz SMA'
+                    inst_type = 'RhodeSchwarz SMA'
                 elif 'FIELDFOX' in lidn or 'FIELD FOX' in lidn:
-                    t = 'Keysight FieldFox'
-                # If the type hint matches or the saved_resource contains a serial-like pattern, accept
-                if inst_type_hint and inst_type_hint.startswith(t.split()[0]):
-                    found.append((label, res, t))
-                else:
-                    # fallback: accept if type strings equal
-                    if t == inst_type_hint:
-                        found.append((label, res, t))
+                    inst_type = 'Keysight FieldFox'
+                if inst_type_hint and inst_type_hint.split()[0] == inst_type.split()[0]:
+                    candidates.append((res.split('::')[3] if '::' in res else res, res, inst_type))
+                elif inst_type == inst_type_hint:
+                    candidates.append((res.split('::')[3] if '::' in res else res, res, inst_type))
             except Exception:
                 continue
-        return found
+        return candidates
     def sequence_power_on(self):
         order = self.seq_order_edit.text().strip()
         if not order:
@@ -612,11 +612,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 margin: 4px;
                 font-weight: 500;
                 color: #222;
+                min-width: 140px; /* ensure long labels like 'Programming' are fully visible */
+                border: 1px solid rgba(0,0,0,0.15); /* subtle outline for rounded tab */
             }
             QTabBar::tab:selected {
                 background: rgba(255,255,255,0.85);
                 color: #007aff;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                border: 1px solid #b6c2ce; 
             }
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -627,7 +629,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 font-size: 15px;
                 color: #222;
                 font-weight: 500;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
             }
             QPushButton:hover {
                 background: #e3eafc;
@@ -680,6 +681,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sequence_abort_flag = False
         self.program_process = None
         self._program_tempfile = None
+        self._logic_thread = None
+        self._logic_poll_timer = None
+        self._logic_abort = False
+        # programming logic directory (external logic files for Configure Part)
+        try:
+            self.program_logic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'programming logics')
+            os.makedirs(self.program_logic_dir, exist_ok=True)
+        except Exception:
+            self.program_logic_dir = os.path.dirname(__file__)
         self.setWindowTitle("Instrument Controller - Multiple Instruments")
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
@@ -754,12 +764,7 @@ class MainWindow(QtWidgets.QMainWindow):
         abort_row.addWidget(self.abort_btn)
         test_layout.addLayout(abort_row)
 
-        # Test run log (read-only)
-        self.test_log = QtWidgets.QPlainTextEdit()
-        self.test_log.setReadOnly(True)
-        self.test_log.setMaximumHeight(200)
-        test_layout.addWidget(QtWidgets.QLabel('Run Log:'))
-        test_layout.addWidget(self.test_log)
+    # (Run log moved to Programming tab)
 
         self.top_tabs.addTab(test_widget, "Sequencing")
 
@@ -773,6 +778,21 @@ class MainWindow(QtWidgets.QMainWindow):
         # --- Programming Tab ---
         prog_widget = QtWidgets.QWidget()
         prog_layout = QtWidgets.QVBoxLayout(prog_widget)
+
+        # Configure Part row (select logic file and run)
+        cfg_row = QtWidgets.QHBoxLayout()
+        self.logic_combo = QtWidgets.QComboBox()
+        self.logic_combo.setMinimumWidth(420)
+        self._refresh_logic_combo()
+        cfg_row.addWidget(QtWidgets.QLabel('Logic file:'))
+        cfg_row.addWidget(self.logic_combo, 1)
+        self.logic_browse_btn = QtWidgets.QPushButton('Browse…')
+        self.logic_browse_btn.clicked.connect(self._browse_logic_file)
+        cfg_row.addWidget(self.logic_browse_btn)
+        self.configure_part_btn = QtWidgets.QPushButton('Configure Part')
+        self.configure_part_btn.clicked.connect(self.on_configure_part_clicked)
+        cfg_row.addWidget(self.configure_part_btn)
+        prog_layout.addLayout(cfg_row)
 
         prog_layout.addWidget(QtWidgets.QLabel('Programming Block (Python code)'))
         self.program_code_edit = QtWidgets.QPlainTextEdit()
@@ -790,6 +810,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.abort_program_btn.clicked.connect(self.on_program_abort)
         prog_btn_row.addWidget(self.abort_program_btn)
         prog_layout.addLayout(prog_btn_row)
+
+        # Run log (moved here from Sequencing tab)
+        prog_layout.addWidget(QtWidgets.QLabel('Run Log:'))
+        self.test_log = QtWidgets.QPlainTextEdit()
+        self.test_log.setReadOnly(True)
+        self.test_log.setMaximumHeight(200)
+        prog_layout.addWidget(self.test_log)
 
         self.top_tabs.addTab(prog_widget, 'Programming')
 
@@ -869,76 +896,21 @@ class MainWindow(QtWidgets.QMainWindow):
             names.append(self.tabs.tabText(i))
         return names
 
-    def _add_seq_instr(self):
-        name = self.seq_instr_combo.currentText()
-        if name:
-            self.seq_list.addItem(f'Instrument: {name}')
-
-    def _add_seq_delay(self):
-        delay, ok = QtWidgets.QInputDialog.getDouble(self, 'Add Delay', 'Delay (seconds):', 1.0, 0.1, 60.0, 1)
-        if ok:
-            self.seq_list.addItem(f'Delay: {delay:.1f} s')
-
-    def _remove_seq_selected(self):
-        for item in self.seq_list.selectedItems():
-            self.seq_list.takeItem(self.seq_list.row(item))
 
     def power_off_all(self):
         """Turn off outputs/inputs for all instruments in tabs."""
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
             if isinstance(widget, KeithleyPanel):
-                # Turn off all outputs
-                if widget.inst:
-                    for ch in (1, 2, 3):
-                        try:
-                            widget.inst.set_output(ch, False)
-                        except Exception:
-                            pass
-                widget.master_out_btn.setChecked(False)
-                widget.master_out_btn.setText('All Off')
+                self._keithley_apply_settings(widget, False)
             elif isinstance(widget, HittiteSigGenPanel):
-                # Turn off output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(False)
-                        widget.output_btn.setChecked(False)
-                        widget.output_btn.setText('Output Off')
-                        widget.status_label.setText('Output OFF')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, False)
             elif isinstance(widget, KeysightELPanel):
-                # Turn off both inputs
-                if widget.dev:
-                    for ch in (1, 2):
-                        if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
-                            continue
-                        try:
-                            widget.dev.set_input(ch, False)
-                        except Exception:
-                            pass
-                widget.input_toggle.setChecked(False)
-                widget.input_toggle.setText('Input Off')
+                self._keysight_el_apply_settings(widget, False)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
-                # Turn off output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(False)
-                        widget.output_btn.setChecked(False)
-                        widget.output_btn.setText('Output Off')
-                        widget.status_label.setText('Output OFF')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, False)
             elif isinstance(widget, FieldFoxSAPanel):
-                # Turn off output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(False)
-                        widget.output_btn.setChecked(False)
-                        widget.output_btn.setText('Output Off')
-                        widget.status_label.setText('Output OFF')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, False)
         if hasattr(self, 'test_power_toggle_btn'):
             self.test_power_toggle_btn.setChecked(False)
             self._update_test_power_toggle_btn(False)
@@ -950,65 +922,15 @@ class MainWindow(QtWidgets.QMainWindow):
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
             if isinstance(widget, KeithleyPanel):
-                # Turn on all outputs
-                if widget.inst:
-                    for ch in (1, 2, 3):
-                        try:
-                            V = float(widget.vol_edits[ch].text())
-                            I = float(widget.iam_edits[ch].text())
-                            widget.inst.set_voltage(ch, V)
-                            widget.inst.set_current(ch, I)
-                            widget.inst.set_output(ch, True)
-                        except Exception:
-                            pass
-                widget.master_out_btn.setChecked(True)
-                widget.master_out_btn.setText('All On')
+                self._keithley_apply_settings(widget, True)
             elif isinstance(widget, HittiteSigGenPanel):
-                # Turn on output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(True)
-                        widget.output_btn.setChecked(True)
-                        widget.output_btn.setText('Output On')
-                        widget.status_label.setText('Output ON')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, True)
             elif isinstance(widget, KeysightELPanel):
-                # Turn on both inputs
-                if widget.dev:
-                    for ch in (1, 2):
-                        if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
-                            continue
-                        try:
-                            mode = widget.mode_combo.currentText()
-                            value = float(widget.mode_value.text())
-                            widget.dev.set_mode(ch, mode)
-                            widget.dev.set_parameter(ch, mode, value)
-                            widget.dev.set_input(ch, True)
-                        except Exception:
-                            pass
-                widget.input_toggle.setChecked(True)
-                widget.input_toggle.setText('Input On')
+                self._keysight_el_apply_settings(widget, True)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
-                # Turn on output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(True)
-                        widget.output_btn.setChecked(True)
-                        widget.output_btn.setText('Output On')
-                        widget.status_label.setText('Output ON')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, True)
             elif isinstance(widget, FieldFoxSAPanel):
-                # Turn on output
-                if widget.dev:
-                    try:
-                        widget.dev.set_output(True)
-                        widget.output_btn.setChecked(True)
-                        widget.output_btn.setText('Output On')
-                        widget.status_label.setText('Output ON')
-                    except Exception as e:
-                        widget.status_label.setText(f'Failed to set output: {e}')
+                self._generic_output_toggle(widget, True)
         if hasattr(self, 'test_power_toggle_btn'):
             self.test_power_toggle_btn.setChecked(True)
             self._update_test_power_toggle_btn(True)
@@ -1047,6 +969,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 tab_type = 'Keysight EL34243A'
             elif isinstance(widget, KeysightE36233APanel):
                 tab_type = 'Keysight E36233A'
+            elif isinstance(widget, HittiteSigGenPanel):
+                tab_type = 'Hittite Sig Gen'
             elif isinstance(widget, RhodeSchwarzSMAPanel):
                 tab_type = 'RhodeSchwarz SMA'
             elif isinstance(widget, FieldFoxSAPanel):
@@ -1064,7 +988,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     saved_name = self.tabs.tabText(i)
                 except Exception:
                     saved_name = ''
-            entry = {'type': tab_type, 'resource': getattr(widget, 'resource', ''), 'name': saved_name}
+            # Robust resource determination (FieldFox panel may not expose 'resource' attribute)
+            resource_val = getattr(widget, 'resource', '')
+            if (not resource_val) and isinstance(widget, FieldFoxSAPanel) and hasattr(widget, 'sa'):
+                try:
+                    resource_val = getattr(widget.sa, 'visa_address', '')
+                except Exception:
+                    resource_val = ''
+            entry = {'type': tab_type, 'resource': resource_val, 'name': saved_name}
             # Save per-panel attributes
             if isinstance(widget, KeithleyPanel):
                 entry['channels'] = {}
@@ -1090,6 +1021,17 @@ class MainWindow(QtWidgets.QMainWindow):
                         'current': widget.current_edit.text(),
                         'output': widget.onoff_btn.isChecked()
                     }
+            elif isinstance(widget, HittiteSigGenPanel):
+                # Save frequency (value + unit if separated) and power + output state if available
+                try:
+                    entry['settings'] = {
+                        'frequency': getattr(widget, 'freq_edit', None).text() if hasattr(widget, 'freq_edit') else '',
+                        'freq_unit': getattr(widget, 'freq_unit_combo', None).currentText() if hasattr(widget, 'freq_unit_combo') else 'MHz',
+                        'power': getattr(widget, 'pow_edit', None).text() if hasattr(widget, 'pow_edit') else '',
+                        'output': getattr(widget, 'output_btn', None).isChecked() if hasattr(widget, 'output_btn') else False
+                    }
+                except Exception:
+                    pass
             # FieldFox SA panel settings
             if isinstance(widget, FieldFoxSAPanel):
                 entry['settings'] = {
@@ -1124,7 +1066,8 @@ class MainWindow(QtWidgets.QMainWindow):
             'instruments': instruments,
             'sequence': seq,
             'use_sequence': use_seq,
-            'program_code': self.program_code_edit.toPlainText() if hasattr(self, 'program_code_edit') else ''
+            'program_code': self.program_code_edit.toPlainText() if hasattr(self, 'program_code_edit') else '',
+            'program_logic_path': self._get_selected_logic_path()
         }
         try:
             with open(path, 'w') as f:
@@ -1183,31 +1126,63 @@ class MainWindow(QtWidgets.QMainWindow):
             instruments = content.get('instruments', [])
             sequence = content.get('sequence', [])
             use_sequence = content.get('use_sequence', False)
+            # restore selected program logic file if present
+            try:
+                logic_path = content.get('program_logic_path', '')
+                if logic_path:
+                    self._ensure_logic_in_combo(logic_path)
+            except Exception:
+                pass
 
         used_resources = set()
         for entry in instruments:
             inst_type = entry.get('type', 'Keithley 2230')
+            # Heuristic reclassification for legacy configs where Hittite was saved as 'Unknown'
+            if inst_type == 'Unknown':
+                name_l = entry.get('name', '').lower()
+                # Prefer explicit name cues
+                if any(k in name_l for k in ['hittite', 'sig', 'signal']):
+                    inst_type = 'Hittite Sig Gen'
+                elif any(k in name_l for k in ['rohde', 'schwarz', 'sma', 'rs ']):
+                    inst_type = 'RhodeSchwarz SMA'
             resource = entry.get('resource', '')
             # For FieldFox: if resource not available, auto-connect to another available FieldFox
             if inst_type == 'Keysight FieldFox' and (not resource or resource not in current_resources):
+                # Attempt automatic substitution without prompting the user.
                 try:
-                    # Scan for available FieldFox devices
                     candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
                 except Exception:
                     candidates = []
+                if not candidates:
+                    # Fresh scan (in case initial resource list was stale)
+                    try:
+                        fresh_rm = pyvisa.ResourceManager()
+                        for res in fresh_rm.list_resources():
+                            try:
+                                dev = fresh_rm.open_resource(res, timeout=1500)
+                                try:
+                                    idn = dev.query('*IDN?').upper()
+                                except Exception:
+                                    idn = ''
+                                finally:
+                                    try:
+                                        dev.close()
+                                    except Exception:
+                                        pass
+                                if any(k in idn for k in ['FIELDFOX','N99','HANDHELD SPECTRUM','N991','N992','N993','N994']):
+                                    candidates.append((res.split('::')[3] if '::' in res else res, res, 'Keysight FieldFox'))
+                                    # don't break; gather all then pick first to allow future heuristics
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
                 if candidates:
-                    # Auto-select first available FieldFox
                     resource = candidates[0][1]
-                    self.statusBar().showMessage(f'FieldFox resource not found in config, auto-connected to: {resource}', 4000)
+                    self.statusBar().showMessage(f'FieldFox resource missing; auto-connected to: {resource}', 5000)
                 else:
-                    resp = QtWidgets.QMessageBox.question(
-                        self, 'Instrument missing',
-                        f'Instrument {resource} of type {inst_type} not found and no FieldFox replacements available.\nSkip this instrument? (No = cancel load)',
-                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.Yes)
-                    if resp == QtWidgets.QMessageBox.No:
-                        return
-                    else:
-                        continue
+                    # No FieldFox found; skip silently with status message.
+                    self.statusBar().showMessage('FieldFox from config not found; no FieldFox detected to substitute (skipped).', 5000)
+                    continue
             elif resource and resource not in current_resources:
                 try:
                     candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
@@ -1264,12 +1239,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     panel.resource_edit.setText(resource)
                 if hasattr(panel, 'name_edit'):
                     panel.name_edit.setText(tab_label)
-                try:
-                    name_val = entry.get('name') if isinstance(entry, dict) else None
-                    if name_val and hasattr(panel, 'name_edit'):
-                        panel.name_edit.setText(name_val)
-                except Exception:
-                    pass
+                name_val = entry.get('name') if isinstance(entry, dict) else None
+                if name_val and hasattr(panel, 'name_edit'):
+                    panel.name_edit.setText(name_val)
                 # Auto-connect panel after loading
                 if hasattr(panel, 'on_connect'):
                     try:
@@ -1314,22 +1286,90 @@ class MainWindow(QtWidgets.QMainWindow):
                             panel.name_edit.setText(name_val)
                     except Exception:
                         pass
+                elif inst_type == 'RhodeSchwarz SMA':
+                    # Restore Rhode & Schwarz SMA generator settings
+                    try:
+                        settings = entry.get('settings', {})
+                        freq = settings.get('frequency')
+                        freq_unit = settings.get('freq_unit')
                         power = settings.get('power')
                         output_state = settings.get('output', False)
-                        freq = settings.get('freq') if 'freq' in settings else None
-                        freq_unit = settings.get('freq_unit') if 'freq_unit' in settings else None
-                        if freq is not None:
+                        # Apply GUI state
+                        if freq is not None and hasattr(panel, 'freq_edit'):
                             panel.freq_edit.setText(str(freq))
-                        if freq_unit is not None:
+                        if freq_unit and hasattr(panel, 'freq_unit_combo'):
                             idx = panel.freq_unit_combo.findText(str(freq_unit))
                             if idx != -1:
                                 panel.freq_unit_combo.setCurrentIndex(idx)
-                        if power is not None:
+                        if power is not None and hasattr(panel, 'pow_edit'):
                             panel.pow_edit.setText(str(power))
-                        panel.output_btn.setChecked(bool(output_state))
-                        panel.output_btn.setText('Output On' if output_state else 'Output Off')
-                        if getattr(panel, 'dev', None):
-                            panel.dev.set_output(bool(output_state))
+                        if hasattr(panel, 'output_btn'):
+                            panel.output_btn.setChecked(bool(output_state))
+                            panel.output_btn.setText('Output On' if output_state else 'Output Off')
+                        # Defer hardware apply to allow connect handshake
+                        def apply_sma_hw():
+                            if getattr(panel, 'dev', None):
+                                try:
+                                    # frequency value is entered along with unit; convert
+                                    try:
+                                        freq_val = float(panel.freq_edit.text())
+                                        unit = panel.freq_unit_combo.currentText()
+                                        mult = {'GHz':1e9,'MHz':1e6,'KHz':1e3,'Hz':1}.get(unit,1)
+                                        panel.dev.set_frequency(freq_val * mult)
+                                    except Exception:
+                                        pass
+                                    if power is not None:
+                                        try:
+                                            panel.dev.set_power(float(power))
+                                        except Exception:
+                                            pass
+                                    panel.dev.set_output(bool(output_state))
+                                except Exception:
+                                    pass
+                        QtCore.QTimer.singleShot(1200, apply_sma_hw)
+                    except Exception:
+                        pass
+                elif inst_type == 'Hittite Sig Gen':
+                    # Restore Hittite signal generator settings
+                    try:
+                        settings = entry.get('settings', {})
+                        freq = settings.get('frequency')
+                        freq_unit = settings.get('freq_unit')
+                        power = settings.get('power')
+                        output_state = settings.get('output', False)
+                        if freq is not None and hasattr(panel, 'freq_edit'):
+                            panel.freq_edit.setText(str(freq))
+                        if freq_unit and hasattr(panel, 'freq_unit_combo'):
+                            idx = panel.freq_unit_combo.findText(str(freq_unit))
+                            if idx != -1:
+                                panel.freq_unit_combo.setCurrentIndex(idx)
+                        if power is not None and hasattr(panel, 'pow_edit'):
+                            panel.pow_edit.setText(str(power))
+                        if hasattr(panel, 'output_btn'):
+                            panel.output_btn.setChecked(bool(output_state))
+                            panel.output_btn.setText('Output On' if output_state else 'Output Off')
+                        def apply_hittite_hw():
+                            if getattr(panel, 'dev', None):
+                                try:
+                                    # Prefer panel helper methods if available
+                                    if hasattr(panel, 'on_set_frequency') and hasattr(panel, 'freq_edit'):
+                                        try:
+                                            panel.on_set_frequency()
+                                        except Exception:
+                                            pass
+                                    if power is not None and hasattr(panel, 'on_set_power'):
+                                        try:
+                                            panel.on_set_power()
+                                        except Exception:
+                                            pass
+                                    if hasattr(panel, 'dev') and hasattr(panel, 'output_btn'):
+                                        try:
+                                            panel.dev.set_output(bool(output_state))
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                        QtCore.QTimer.singleShot(1500, apply_hittite_hw)
                     except Exception:
                         pass
                 elif inst_type == 'Keysight FieldFox':
@@ -1352,6 +1392,28 @@ class MainWindow(QtWidgets.QMainWindow):
                             idx = panel.unit_combo.findText(str(unit))
                             if idx != -1:
                                 panel.unit_combo.setCurrentIndex(idx)
+                        # Ensure connection and capture thread start after short delay
+                        def attempt(idx=0):
+                            try:
+                                if getattr(panel.sa, 'inst', None) is None and hasattr(panel, 'on_connect'):
+                                    panel.on_connect()
+                                if getattr(panel.sa, 'inst', None) is not None:
+                                    try:
+                                        panel.apply_settings()
+                                    except Exception:
+                                        pass
+                                    # Explicitly start capture (idempotent)
+                                    try:
+                                        panel.start_capture_thread()
+                                    except Exception:
+                                        pass
+                                    return  # success
+                            except Exception:
+                                pass
+                            # retry up to 5 times
+                            if idx < 5:
+                                QtCore.QTimer.singleShot(500, lambda: attempt(idx+1))
+                        QtCore.QTimer.singleShot(400, attempt)
                     except Exception:
                         pass
             # Tab name update logic (no label reference)
@@ -1361,13 +1423,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.tabs.setTabText(idx, getattr(panel, 'name_edit', None).text() if hasattr(panel, 'name_edit') else resource)
             if hasattr(panel, 'name_edit'):
                 panel.name_edit.textChanged.connect(lambda: update_tab_name(panel, resource))
-                try:
-                    if hasattr(self, 'power_seq_builder'):
+                if hasattr(self, 'power_seq_builder'):
+                    try:
                         self.power_seq_builder.refresh_instr_combo()
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
             update_tab_name(panel, resource)
             self._auto_turn_off_panel(panel)
+
+        # After loading tabs, refresh logic list from disk
+        try:
+            self._refresh_logic_combo()
+        except Exception:
+            pass
     def _refresh_seq_instr_combo(self):
         self.seq_instr_combo.clear()
         for i in range(self.tabs.count()):
@@ -1784,6 +1852,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.abort_program_btn.setEnabled(False)
             if hasattr(self, 'program_now_btn'):
                 self.program_now_btn.setEnabled(True)
+            if hasattr(self, 'configure_part_btn'):
+                self.configure_part_btn.setEnabled(True)
         except Exception:
             pass
 
@@ -1802,6 +1872,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.program_process = None
         except Exception:
             pass
+        # Also signal abort for direct logic thread (best-effort – user logic must cooperate if long-running)
+        try:
+            if getattr(self, '_logic_thread', None) is not None and self._logic_thread.is_alive():
+                self._logic_abort = True
+                self._log('Requested abort of Configure Part logic (will stop when safe)')
+        except Exception:
+            pass
         # Update UI
         try:
             if hasattr(self, 'run_program_btn'):
@@ -1810,6 +1887,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.abort_program_btn.setEnabled(False)
             if hasattr(self, 'program_now_btn'):
                 self.program_now_btn.setEnabled(True)
+            if hasattr(self, 'configure_part_btn'):
+                self.configure_part_btn.setEnabled(True)
         except Exception:
             pass
 
@@ -1859,6 +1938,185 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.run_program_code()
         except Exception:
             pass
+
+    # --- Configure Part (external logic) ---
+    def _refresh_logic_combo(self):
+        try:
+            if not hasattr(self, 'logic_combo'):
+                return
+            self.logic_combo.clear()
+            self.logic_combo.addItem('(Select a logic file)', '')
+            try:
+                files = [f for f in os.listdir(self.program_logic_dir) if f.lower().endswith('.py')]
+            except Exception:
+                files = []
+            for f in sorted(files):
+                full = os.path.join(self.program_logic_dir, f)
+                self.logic_combo.addItem(f, full)
+        except Exception:
+            pass
+
+    def _ensure_logic_in_combo(self, path: str):
+        if not path:
+            return
+        try:
+            # If already present, select it. Otherwise add as custom entry.
+            for i in range(self.logic_combo.count()):
+                if self.logic_combo.itemData(i) == path:
+                    self.logic_combo.setCurrentIndex(i)
+                    return
+            # Add custom path
+            self.logic_combo.addItem(os.path.basename(path), path)
+            self.logic_combo.setCurrentIndex(self.logic_combo.count() - 1)
+        except Exception:
+            pass
+
+    def _browse_logic_file(self):
+        start_dir = self.program_logic_dir if os.path.isdir(self.program_logic_dir) else os.path.expanduser('~')
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Select logic file', start_dir, 'Python Files (*.py)')
+        if not fname:
+            return
+        # If file not in our logic dir, offer to copy
+        try:
+            target = os.path.join(self.program_logic_dir, os.path.basename(fname))
+            if os.path.abspath(os.path.dirname(fname)) != os.path.abspath(self.program_logic_dir):
+                resp = QtWidgets.QMessageBox.question(
+                    self, 'Copy logic file?',
+                    f'Copy selected file into:\n{self.program_logic_dir}\nfor easier reuse?',
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.Yes)
+                if resp == QtWidgets.QMessageBox.Yes:
+                    try:
+                        import shutil
+                        os.makedirs(self.program_logic_dir, exist_ok=True)
+                        shutil.copy2(fname, target)
+                        fname = target
+                    except Exception as e:
+                        QtWidgets.QMessageBox.warning(self, 'Copy failed', str(e))
+            # Ensure in combo and select
+            self._ensure_logic_in_combo(fname)
+        except Exception:
+            pass
+
+    def _get_selected_logic_path(self) -> str:
+        try:
+            data = self.logic_combo.currentData()
+            return data if isinstance(data, str) else ''
+        except Exception:
+            return ''
+
+    def on_configure_part_clicked(self):
+        logic_path = self._get_selected_logic_path()
+        if not logic_path:
+            QtWidgets.QMessageBox.information(self, 'No logic selected', 'Please select a logic .py file to run.')
+            return
+        if not os.path.exists(logic_path):
+            QtWidgets.QMessageBox.warning(self, 'Missing file', f'Logic file not found:\n{logic_path}')
+            return
+        self.run_configure_part(logic_path)
+
+    def run_configure_part(self, logic_path: str):
+        # Run logic directly in a background thread (no temp file, no subprocess)
+        if self._logic_thread is not None and self._logic_thread.is_alive():
+            self._log('Configure Part is already running')
+            return
+
+        self._logic_abort = False
+        self._log(f'Starting Configure Part with logic: {os.path.basename(logic_path)}')
+
+        def post_log(msg: str):
+            try:
+                QtCore.QTimer.singleShot(0, lambda m=msg: self._log(m))
+            except Exception:
+                pass
+
+        def worker():
+            import sys as _sys
+            import importlib.util as _importlib_util
+            try:
+                # Ensure ACE Client path is available
+                ace_path = r'C:\\Program Files\\Analog Devices\\ACE\\Client'
+                if ace_path not in _sys.path:
+                    _sys.path.append(ace_path)
+                import clr  # type: ignore
+                clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+                clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+                from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
+                manager = ClientManager.Create()
+                client = manager.CreateRequestClient('localhost:2357')
+                # Load logic module from given path
+                spec = _importlib_util.spec_from_file_location('selected_logic', logic_path)
+                mod = _importlib_util.module_from_spec(spec)
+                assert spec and spec.loader
+                spec.loader.exec_module(mod)  # type: ignore
+                func = None
+                if hasattr(mod, 'execute_macro'):
+                    func = getattr(mod, 'execute_macro')
+                elif hasattr(mod, 'logic'):
+                    func = getattr(mod, 'logic')
+                if func is None:
+                    self._log('Selected logic file must define execute_macro(client) or logic(client)')
+                    return
+                self._log('ACE connection established; running logic...')
+                try:
+                    func(client)
+                finally:                    
+                    self._log('Configure Part finished')
+            except Exception as e:
+                self._log(f'Configure Part error: {e}')
+
+        import threading as _threading
+        self._logic_thread = _threading.Thread(target=worker, daemon=True)
+        self._logic_thread.start()
+
+        # Update UI while running
+        try:
+            if hasattr(self, 'abort_program_btn'):
+                self.abort_program_btn.setEnabled(True)
+            if hasattr(self, 'run_program_btn'):
+                self.run_program_btn.setEnabled(False)
+            if hasattr(self, 'program_now_btn'):
+                self.program_now_btn.setEnabled(False)
+            if hasattr(self, 'configure_part_btn'):
+                self.configure_part_btn.setEnabled(False)
+        except Exception:
+            pass
+
+        # Poll thread to re-enable UI on completion
+        try:
+            if self._logic_poll_timer is None:
+                self._logic_poll_timer = QtCore.QTimer(self)
+                self._logic_poll_timer.setInterval(300)
+                self._logic_poll_timer.timeout.connect(self._on_logic_thread_check)
+            if not self._logic_poll_timer.isActive():
+                self._logic_poll_timer.start()
+        except Exception:
+            pass
+
+    def _on_logic_thread_check(self):
+        try:
+            alive = self._logic_thread is not None and self._logic_thread.is_alive()
+        except Exception:
+            alive = False
+        if not alive:
+            try:
+                if self._logic_poll_timer and self._logic_poll_timer.isActive():
+                    self._logic_poll_timer.stop()
+            except Exception:
+                pass
+            self._logic_thread = None
+            # Reset UI buttons
+            try:
+                if hasattr(self, 'run_program_btn'):
+                    self.run_program_btn.setEnabled(True)
+                if hasattr(self, 'abort_program_btn'):
+                    self.abort_program_btn.setEnabled(False)
+                if hasattr(self, 'program_now_btn'):
+                    self.program_now_btn.setEnabled(True)
+                if hasattr(self, 'configure_part_btn'):
+                    self.configure_part_btn.setEnabled(True)
+            except Exception:
+                pass
 
 def main():
     import traceback
