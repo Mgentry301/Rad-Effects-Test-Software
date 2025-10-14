@@ -1,0 +1,10 @@
+{
+  "name": "Nolan's Bench",
+  "aliases": {
+    "Keithley 0": "USB0::0x05E6::0x2230::9100413::INSTR",
+    "FieldFox 0": "USB0::0x2A8D::0x5C18::MY62151444::INSTR",
+    "Keysight EL 0": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+    "Unknown 0": "ASRL1::INSTR",
+    "Unknown 1": "ASRL3::INSTR"
+  }
+}

@@ -2,7 +2,7 @@
   "instruments": [
     {
       "type": "Keithley 2230",
-      "resource": "alias:Keithley 3",
+      "resource": "alias:Keithley 0",
       "name": "k0",
       "channels": {
         "1": {

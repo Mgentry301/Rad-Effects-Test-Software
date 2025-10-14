@@ -26,16 +26,12 @@ class KeithleyPanel(QtWidgets.QWidget):
         self.resource = resource
         self.inst = None
         self.latest_currents = {1: None, 2: None, 3: None}
-        # sequence/program control flags/process
-        self._sequence_abort_flag = False
-        self.program_process = None
         self._build_ui()
-
 
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
 
-            # Connection row
+        # Connection row
         row = QtWidgets.QHBoxLayout()
         self.resource_edit = QtWidgets.QLineEdit(self.resource)
         self.connect_btn = QtWidgets.QPushButton('Connect')
@@ -55,23 +51,31 @@ class KeithleyPanel(QtWidgets.QWidget):
         # Channel setpoints
         self.vol_edits = {}
         self.iam_edits = {}
+        self.output_btns = {}
         ch_group = QtWidgets.QGroupBox('Channel Setpoints')
         ch_layout = QtWidgets.QGridLayout()
         ch_layout.addWidget(QtWidgets.QLabel('Chan'), 0, 0)
         ch_layout.addWidget(QtWidgets.QLabel('V (V)'), 0, 1)
         ch_layout.addWidget(QtWidgets.QLabel('I (A)'), 0, 2)
         ch_layout.addWidget(QtWidgets.QLabel('Action'), 0, 3)
+        ch_layout.addWidget(QtWidgets.QLabel('Output'), 0, 4)
         for i in (1, 2, 3):
             ch_layout.addWidget(QtWidgets.QLabel(str(i)), i, 0)
             v_edit = QtWidgets.QLineEdit('0')
             i_edit = QtWidgets.QLineEdit('0.03')
             set_btn = QtWidgets.QPushButton('Set')
             set_btn.clicked.connect(partial(self.on_set_channel, i))
+            output_btn = QtWidgets.QPushButton('Output Off')
+            output_btn.setCheckable(True)
+            output_btn.setChecked(False)
+            output_btn.clicked.connect(partial(self.on_toggle_channel_output, i))
             self.vol_edits[i] = v_edit
             self.iam_edits[i] = i_edit
+            self.output_btns[i] = output_btn
             ch_layout.addWidget(v_edit, i, 1)
             ch_layout.addWidget(i_edit, i, 2)
             ch_layout.addWidget(set_btn, i, 3)
+            ch_layout.addWidget(output_btn, i, 4)
         ch_group.setLayout(ch_layout)
         layout.addWidget(ch_group)
 
@@ -180,41 +184,68 @@ class KeithleyPanel(QtWidgets.QWidget):
     def on_toggle_all_outputs(self):
         if self.inst is None:
             self.status_label.setText('Not connected')
-            self.master_out_btn.setChecked(False)
+            for ch in (1, 2, 3):
+                self.output_btns[ch].setChecked(False)
+                self.output_btns[ch].setText('Output Off')
+                self.output_btns[ch].setStyleSheet('background-color: #F44336; color: white;')
             return
         on = self.master_out_btn.isChecked()
+        for ch in (1, 2, 3):
+            try:
+                if on:
+                    V = float(self.vol_edits[ch].text())
+                    I = float(self.iam_edits[ch].text())
+                    self.inst.set_voltage(ch, V)
+                    self.inst.set_current(ch, I)
+                    self.inst.set_output(ch, True)
+                    self.output_btns[ch].setChecked(True)
+                    self.output_btns[ch].setText('Output On')
+                    self.output_btns[ch].setStyleSheet('background-color: #4CAF50; color: white;')
+                else:
+                    self.inst.set_output(ch, False)
+                    self.output_btns[ch].setChecked(False)
+                    self.output_btns[ch].setText('Output Off')
+                    self.output_btns[ch].setStyleSheet('background-color: #F44336; color: white;')
+            except Exception:
+                pass
+        self.master_out_btn.setText('All On' if on else 'All Off')
+        self._update_master_out_btn_color(on)
+        self.status_label.setText('All channels output ON' if on else 'All channels output OFF')
+    def on_toggle_channel_output(self, ch: int):
+        if self.inst is None:
+            self.status_label.setText('Not connected')
+            self.output_btns[ch].setChecked(False)
+            self.output_btns[ch].setText('Output Off')
+            self.output_btns[ch].setStyleSheet('background-color: #F44336; color: white;')
+            return
+        on = self.output_btns[ch].isChecked()
         try:
             if on:
-                for ch in (1, 2, 3):
-                    try:
-                        V = float(self.vol_edits[ch].text())
-                        I = float(self.iam_edits[ch].text())
-                        self.inst.set_voltage(ch, V)
-                        self.inst.set_current(ch, I)
-                    except Exception as e_set:
-                        self.master_out_btn.setChecked(False)
-                        self.master_out_btn.setText('All Off')
-                        self.status_label.setText(f'Failed to apply setpoints for ch{ch}: {e_set}')
-                        return
-                for ch in (1, 2, 3):
-                    self.inst.set_output(ch, True)
-                self.master_out_btn.setText('All On')
-                self._update_master_out_btn_color(True)
-                self.status_label.setText('All channels output ON')
+                V = float(self.vol_edits[ch].text())
+                I = float(self.iam_edits[ch].text())
+                self.inst.set_voltage(ch, V)
+                self.inst.set_current(ch, I)
+                self.inst.set_output(ch, True)
+                self.output_btns[ch].setText('Output On')
+                self.output_btns[ch].setStyleSheet('background-color: #4CAF50; color: white;')
+                self.status_label.setText(f'Channel {ch} output ON')
+                # Set other channels' voltage and current to zero, but do not toggle their output off
+                for other_ch in (1, 2, 3):
+                    if other_ch != ch and not self.output_btns[other_ch].isChecked():
+                        self.inst.set_voltage(other_ch, 0.0)
+                        self.inst.set_current(other_ch, 0.0)
             else:
-                for ch in (1, 2, 3):
-                    try:
-                        self.inst.set_output(ch, False)
-                    except Exception:
-                        pass
-                self.master_out_btn.setText('All Off')
-                self._update_master_out_btn_color(False)
-                self.status_label.setText('All channels output OFF')
+                # Set voltage and current to zero, but keep output ON
+                self.inst.set_voltage(ch, 0.0)
+                self.inst.set_current(ch, 0.0)
+                self.output_btns[ch].setText('Output Off')
+                self.output_btns[ch].setStyleSheet('background-color: #F44336; color: white;')
+                self.status_label.setText(f'Channel {ch} output ON (zeroed)')
         except Exception as e:
-            self.master_out_btn.setChecked(not on)
-            self.master_out_btn.setText('All On' if not on else 'All Off')
-            self._update_master_out_btn_color(not on)
-            self.status_label.setText(f'All-output toggle failed: {e}')
+            self.output_btns[ch].setChecked(not on)
+            self.output_btns[ch].setText('Output On' if not on else 'Output Off')
+            self.output_btns[ch].setStyleSheet('background-color: #4CAF50; color: white;' if not on else 'background-color: #F44336; color: white;')
+            self.status_label.setText(f'Failed to set output for channel {ch}: {e}')
 
     def read_once(self):
         if self.inst is None:

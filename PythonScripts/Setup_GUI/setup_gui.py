@@ -45,8 +45,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     panel.inst.set_voltage(ch, V)
                     panel.inst.set_current(ch, I)
                     panel.inst.set_output(ch, True)
+                    panel.output_btns[ch].setChecked(True)
+                    panel.output_btns[ch].setText('Output On')
+                    panel.output_btns[ch].setStyleSheet('background-color: #4CAF50; color: white;')
                 else:
                     panel.inst.set_output(ch, False)
+                    panel.output_btns[ch].setChecked(False)
+                    panel.output_btns[ch].setText('Output Off')
+                    panel.output_btns[ch].setStyleSheet('background-color: #F44336; color: white;')
             except Exception:
                 pass
         panel.master_out_btn.setChecked(on)
@@ -57,16 +63,36 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         for ch in (1, 2):
             try:
+                mode = (panel.mode_combo_ch1.currentText() if ch == 1 else panel.mode_combo_ch2.currentText())
+                if mode == 'Disable':
+                    panel.dev.set_input(ch, False)
+                    if hasattr(panel, '_set_input_toggle_ui'):
+                        panel._set_input_toggle_ui(ch, False)
+                    continue
                 if on:
                     # Read per-channel UI controls
-                    mode = (panel.mode_combo_ch1.currentText() if ch == 1 else panel.mode_combo_ch2.currentText())
                     try:
                         value = float(panel.mode_value_ch1.text() if ch == 1 else panel.mode_value_ch2.text())
                     except Exception:
                         value = 0.0
                     panel.dev.set_mode(ch, mode)
-                    panel.dev.set_parameter(ch, mode, value)
+                    ramp_enabled = panel.ramp_enable_ch1.isChecked() if ch == 1 else panel.ramp_enable_ch2.isChecked()
+                    try:
+                        rise_time = float(panel.rise_time_ch1.text() if ch == 1 else panel.rise_time_ch2.text())
+                    except Exception:
+                        rise_time = 0.0
                     panel.dev.set_input(ch, True)
+                    if ramp_enabled and rise_time > 0:
+                        import numpy as np
+                        import time
+                        steps = 20
+                        for v in np.linspace(0, value, steps):
+                            panel.dev.set_parameter(ch, mode, v)
+                            QtWidgets.QApplication.processEvents()
+                            time.sleep(rise_time / steps)
+                        panel.dev.set_parameter(ch, mode, value)
+                    else:
+                        panel.dev.set_parameter(ch, mode, value)
                 else:
                     panel.dev.set_input(ch, False)
             except Exception:
@@ -1502,18 +1528,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def power_on_all(self):
         """Turn on outputs/inputs for all instruments in tabs."""
+        # First, power on all instruments except Keysight EL
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
             if isinstance(widget, KeithleyPanel):
                 self._keithley_apply_settings(widget, True)
             elif isinstance(widget, HittiteSigGenPanel):
                 self._generic_output_toggle(widget, True)
-            elif isinstance(widget, KeysightELPanel):
-                self._keysight_el_apply_settings(widget, True)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
                 self._generic_output_toggle(widget, True)
             elif isinstance(widget, FieldFoxSAPanel):
                 self._generic_output_toggle(widget, True)
+        # Then, ramp and power on Keysight EL
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            if isinstance(widget, KeysightELPanel):
+                self._keysight_el_apply_settings(widget, True)
         if hasattr(self, 'test_power_toggle_btn'):
             self.test_power_toggle_btn.setChecked(True)
             self._update_test_power_toggle_btn(True)
@@ -1897,10 +1927,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             inp = bool(widget._get_input_toggle_ui(ch))
                     except Exception:
                         pass
+                    # Save ramp enable and rise time in addition to mode/value/input
+                    ramp_enable = (widget.ramp_enable_ch1.isChecked() if ch == 1 else widget.ramp_enable_ch2.isChecked())
+                    rise_time = (widget.rise_time_ch1.text() if ch == 1 else widget.rise_time_ch2.text())
                     entry['channels'][ch] = {
                         'mode': mode,
                         'value': value,
-                        'input': inp
+                        'input': inp,
+                        'ramp_enabled': ramp_enable,
+                        'rise_time': rise_time
                     }
             elif isinstance(widget, KeysightE36233APanel):
                 entry['channels'] = {}
@@ -2035,6 +2070,13 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 self.register_read_array = []
 
+        # Restore sequence builder state from config
+        if hasattr(self, 'power_seq_builder'):
+            try:
+                self.power_seq_builder.set_sequence(sequence)
+                self.power_seq_builder.set_use_sequence(use_sequence)
+            except Exception:
+                pass
         used_resources = set()
         for entry in instruments:
             inst_type = entry.get('type', 'Keithley 2230')
@@ -2212,6 +2254,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                             combo.setCurrentIndex(idx)
                                 if hasattr(panel, 'mode_value_ch1') and hasattr(panel, 'mode_value_ch2') and (ch_cfg.get('value') is not None):
                                     (panel.mode_value_ch1 if ch == 1 else panel.mode_value_ch2).setText(str(ch_cfg.get('value')))
+                                # Restore ramp enable and rise time
+                                if hasattr(panel, 'ramp_enable_ch1') and hasattr(panel, 'ramp_enable_ch2'):
+                                    ramp_enable = ch_cfg.get('ramp_enabled', False)
+                                    (panel.ramp_enable_ch1 if ch == 1 else panel.ramp_enable_ch2).setChecked(bool(ramp_enable))
+                                if hasattr(panel, 'rise_time_ch1') and hasattr(panel, 'rise_time_ch2'):
+                                    rise_time = ch_cfg.get('rise_time', '')
+                                    (panel.rise_time_ch1 if ch == 1 else panel.rise_time_ch2).setText(str(rise_time))
                             except Exception:
                                 pass
                             # Apply to hardware if connected
@@ -2703,7 +2752,42 @@ class MainWindow(QtWidgets.QMainWindow):
                     return
                 item = sequence[idx]
                 self._log(f'Processing step: {item}')
-                if item.startswith('Instrument: '):
+                if item.startswith('KeithleyChannel: '):
+                    # Sequence step for individual Keithley channel
+                    name = item[len('KeithleyChannel: '):]
+                    # name format: 'Keithley ... Channel N'
+                    if 'Channel' in name:
+                        parts = name.split('Channel')
+                        tab_name = parts[0].strip()
+                        try:
+                            ch = int(parts[1].strip())
+                        except Exception:
+                            ch = None
+                        for i in range(self.tabs.count()):
+                            if self.tabs.tabText(i) == tab_name:
+                                widget = self.tabs.widget(i)
+                                if isinstance(widget, KeithleyPanel) and widget.inst and ch:
+                                    try:
+                                        V = float(widget.vol_edits[ch].text())
+                                        I = float(widget.iam_edits[ch].text())
+                                    except Exception:
+                                        V, I = 0.0, 0.03
+                                    # Set voltage/current for requested channel
+                                    widget.inst.set_voltage(ch, V)
+                                    widget.inst.set_current(ch, I)
+                                    # Set voltage/current to zero for other channels, but do not toggle their output off
+                                    for other_ch in (1, 2, 3):
+                                        if other_ch != ch and not widget.output_btns[other_ch].isChecked():
+                                            widget.inst.set_voltage(other_ch, 0.0)
+                                            widget.inst.set_current(other_ch, 0.0)
+                                    # Only enable output if not already on
+                                    if not widget.output_btns[ch].isChecked():
+                                        widget.inst.set_output(ch, True)
+                                    widget.output_btns[ch].setChecked(True)
+                                    widget.output_btns[ch].setText('Output On')
+                                break
+                    QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
+                elif item.startswith('Instrument: '):
                     name = item[len('Instrument: '):]
                     for i in range(self.tabs.count()):
                         tab_name = self.tabs.tabText(i)
@@ -2718,10 +2802,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                             widget.inst.set_voltage(ch, V)
                                             widget.inst.set_current(ch, I)
                                             widget.inst.set_output(ch, True)
+                                            widget.output_btns[ch].setChecked(True)
+                                            widget.output_btns[ch].setText('Output On')
                                         except Exception:
                                             pass
-                                    widget.master_out_btn.setChecked(True)
-                                    widget.master_out_btn.setText('All On')
+                                    if hasattr(widget, 'master_out_btn'):
+                                        widget.master_out_btn.setChecked(True)
+                                        widget.master_out_btn.setText('All On')
                             elif isinstance(widget, HittiteSigGenPanel):
                                 if widget.dev:
                                     try:
@@ -2737,15 +2824,48 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
                                             continue
                                         try:
-                                            mode = widget.mode_combo.currentText()
-                                            value = float(widget.mode_value.text())
+                                            # Use per-channel controls and ramp logic
+                                            mode_combo = getattr(widget, f'mode_combo_ch{ch}', None)
+                                            mode_value_edit = getattr(widget, f'mode_value_ch{ch}', None)
+                                            ramp_enable = getattr(widget, f'ramp_enable_ch{ch}', None)
+                                            rise_time_edit = getattr(widget, f'rise_time_ch{ch}', None)
+                                            input_toggle = getattr(widget, f'input_toggle_ch{ch}', None)
+                                            if not mode_combo or not mode_value_edit:
+                                                continue
+                                            mode = mode_combo.currentText()
+                                            try:
+                                                value = float(mode_value_edit.text())
+                                            except Exception:
+                                                value = 0.0
+                                            ramp_enabled = ramp_enable.isChecked() if ramp_enable else False
+                                            try:
+                                                rise_time = float(rise_time_edit.text()) if rise_time_edit else 0.0
+                                            except Exception:
+                                                rise_time = 0.0
+                                            if mode == 'Disable':
+                                                widget.dev.set_input(ch, False)
+                                                if input_toggle:
+                                                    input_toggle.setChecked(False)
+                                                    input_toggle.setText('Input Off')
+                                                continue
                                             widget.dev.set_mode(ch, mode)
-                                            widget.dev.set_parameter(ch, mode, value)
                                             widget.dev.set_input(ch, True)
+                                            if ramp_enabled and rise_time > 0:
+                                                import numpy as np
+                                                import time
+                                                steps = 20
+                                                for v in np.linspace(0, value, steps):
+                                                    widget.dev.set_parameter(ch, mode, v)
+                                                    QtWidgets.QApplication.processEvents()
+                                                    time.sleep(rise_time / steps)
+                                                widget.dev.set_parameter(ch, mode, value)
+                                            else:
+                                                widget.dev.set_parameter(ch, mode, value)
+                                            if input_toggle:
+                                                input_toggle.setChecked(True)
+                                                input_toggle.setText('Input On')
                                         except Exception:
                                             pass
-                                    widget.input_toggle.setChecked(True)
-                                    widget.input_toggle.setText('Input On')
                             elif isinstance(widget, RhodeSchwarzSMAPanel):
                                 if widget.dev:
                                     try:

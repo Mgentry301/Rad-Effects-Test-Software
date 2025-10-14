@@ -1,6 +1,13 @@
 from PyQt5 import QtWidgets
 
 class PowerSequenceBuilder(QtWidgets.QGroupBox):
+    def set_sequence(self, sequence):
+        self.seq_list.clear()
+        for item in sequence:
+            self.seq_list.addItem(item)
+
+    def set_use_sequence(self, use_seq):
+        self.enable_checkbox.setChecked(bool(use_seq))
     def __init__(self, parent=None, get_instruments_callback=None):
         super().__init__('Power-Up Sequence Builder', parent)
         self.get_instruments_callback = get_instruments_callback
@@ -31,10 +38,17 @@ class PowerSequenceBuilder(QtWidgets.QGroupBox):
         if self.get_instruments_callback:
             for name in self.get_instruments_callback():
                 self.instr_combo.addItem(name)
+                # Add individual Keithley channels as options
+                if name.startswith('Keithley'):
+                    for ch in (1, 2, 3):
+                        self.instr_combo.addItem(f'{name} Channel {ch}')
     def add_instr(self):
         name = self.instr_combo.currentText()
         if name:
-            self.seq_list.addItem(f'Instrument: {name}')
+            if 'Channel' in name:
+                self.seq_list.addItem(f'KeithleyChannel: {name}')
+            else:
+                self.seq_list.addItem(f'Instrument: {name}')
     def add_delay(self):
         delay, ok = QtWidgets.QInputDialog.getDouble(self, 'Add Delay', 'Delay (seconds):', 1.0, 0.1, 60.0, 1)
         if ok:
