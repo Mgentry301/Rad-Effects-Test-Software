@@ -3195,5 +3195,5 @@ def main():
         print('Exception occurred while launching GUI:')
         traceback.print_exc()
 
-if __name__ == '__main__':
-    main()
+        print(f'Fatal startup error: {e}', file=sys.stderr)
+        sys.exit(1)

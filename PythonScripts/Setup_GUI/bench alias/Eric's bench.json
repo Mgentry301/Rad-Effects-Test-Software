@@ -2,10 +2,10 @@
   "name": "Eric's bench",
   "aliases": {
     "FieldFox 0": "USB0::0x2A8D::0x5C18::MY57202149::INSTR",
-    "Keithley 0": "USB0::0x05E6::0x2230::9030930::INSTR",
-    "Keithley 1": "USB0::0x05E6::0x2230::9100252::INSTR",
+    "Keithley 0": "USB0::0x05E6::0x2230::9201602::INSTR",
+    "Keithley 1": "USB0::0x05E6::0x2230::9030930::INSTR",    
     "Keithley 2": "USB0::0x05E6::0x2230::9201548::INSTR",
-    "Keithley 3": "USB0::0x05E6::0x2230::9201602::INSTR",
+    "Keithley 3": "USB0::0x05E6::0x2230::9100252::INSTR",
     "Unknown 0": "ASRL1::INSTR",
     "Unknown 1": "ASRL3::INSTR",
     "RohdeSchwarz SMA 0": "GPIB0::27::INSTR",
