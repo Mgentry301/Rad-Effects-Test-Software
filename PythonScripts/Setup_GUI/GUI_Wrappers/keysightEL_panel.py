@@ -1,17 +1,16 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 from Instruments.keysight_el import KeysightEL
 
 
 class KeysightELPanel(QtWidgets.QWidget):
     def set_tab_name_callback(self, callback):
         self.name_edit.textChanged.connect(callback)
-    """Panel for Keysight EL34243A-style dual-input electronic load."""
+    """Panel for Keysight EL34243A-style dual-input electronic load with dedicated per-channel controls."""
     def __init__(self, resource, parent=None):
         super().__init__(parent)
         self.resource = resource
         self.dev = None  # KeysightEL instance
         self._build_ui()
-
 
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
@@ -33,67 +32,69 @@ class KeysightELPanel(QtWidgets.QWidget):
         name_row.addWidget(self.name_edit)
         layout.addLayout(name_row)
 
-        # Channel selector (EL34243A has two inputs)
-        ch_row = QtWidgets.QHBoxLayout()
-        ch_row.addWidget(QtWidgets.QLabel('Channel:'))
-        self.ch_select = QtWidgets.QComboBox()
-        self.ch_select.addItems(['1', '2'])
-        ch_row.addWidget(self.ch_select)
-        # Add enable/disable checkboxes for each channel
-        self.ch_enabled = {1: QtWidgets.QCheckBox('Enable Ch 1'), 2: QtWidgets.QCheckBox('Enable Ch 2')}
-        self.ch_enabled[1].setChecked(True)
-        self.ch_enabled[2].setChecked(True)
-        ch_row.addWidget(self.ch_enabled[1])
-        ch_row.addWidget(self.ch_enabled[2])
-        self.ch_enabled[1].stateChanged.connect(lambda _: self._update_input_toggle_color(self.ch_enabled[1].isChecked()))
-        self.ch_enabled[2].stateChanged.connect(lambda _: self._update_input_toggle_color(self.ch_enabled[2].isChecked()))
-        layout.addLayout(ch_row)
+    # (Enable/disable per channel removed; dedicated controls shown at all times)
 
-        # On/Off control
-        inp_row = QtWidgets.QHBoxLayout()
-        self.input_toggle = QtWidgets.QPushButton('Input Off')
-        self.input_toggle.setCheckable(True)
-        self.input_toggle.clicked.connect(self.on_toggle_input)
-        self._update_input_toggle_color(False)
-        inp_row.addWidget(self.input_toggle)
-        layout.addLayout(inp_row)
+        # Per-channel controls
+        ch_grid = QtWidgets.QGridLayout()
+        header_font = QtGui.QFont()
+        header_font.setBold(True)
+        ch_grid.addWidget(QtWidgets.QLabel('Channel'), 0, 0)
+        ch_grid.addWidget(QtWidgets.QLabel('Mode'), 0, 1)
+        ch_grid.addWidget(QtWidgets.QLabel('Value'), 0, 2)
+        ch_grid.addWidget(QtWidgets.QLabel('Apply'), 0, 3)
+        ch_grid.addWidget(QtWidgets.QLabel('Input'), 0, 4)
+        ch_grid.addWidget(QtWidgets.QLabel('Voltage'), 0, 5)
+        ch_grid.addWidget(QtWidgets.QLabel('Current'), 0, 6)
 
-        # Mode selection and parameter
-        mode_group = QtWidgets.QGroupBox('Mode and Parameter')
-        mlay = QtWidgets.QHBoxLayout()
-        mlay.addWidget(QtWidgets.QLabel('Mode:'))
-        self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(['CC', 'CV', 'CR', 'CP'])
-        mlay.addWidget(self.mode_combo)
-        mlay.addWidget(QtWidgets.QLabel('Value:'))
-        self.mode_value = QtWidgets.QLineEdit('0.1')
-        mlay.addWidget(self.mode_value)
-        self.mode_apply = QtWidgets.QPushButton('Apply')
-        self.mode_apply.clicked.connect(self.on_apply_mode)
-        mlay.addWidget(self.mode_apply)
-        mode_group.setLayout(mlay)
-        layout.addWidget(mode_group)
+        # Channel 1 row
+        ch_grid.addWidget(QtWidgets.QLabel('Ch 1'), 1, 0)
+        self.mode_combo_ch1 = QtWidgets.QComboBox()
+        self.mode_combo_ch1.addItems(['CC', 'CV', 'CR', 'CP'])
+        ch_grid.addWidget(self.mode_combo_ch1, 1, 1)
+        self.mode_value_ch1 = QtWidgets.QLineEdit('0.1')
+        ch_grid.addWidget(self.mode_value_ch1, 1, 2)
+        self.mode_apply_ch1 = QtWidgets.QPushButton('Apply Ch1')
+        self.mode_apply_ch1.clicked.connect(lambda: self.on_apply_mode(1))
+        ch_grid.addWidget(self.mode_apply_ch1, 1, 3)
+        self.input_toggle_ch1 = QtWidgets.QPushButton('Input Off')
+        self.input_toggle_ch1.setCheckable(True)
+        self.input_toggle_ch1.clicked.connect(lambda: self.on_toggle_input(1))
+        ch_grid.addWidget(self.input_toggle_ch1, 1, 4)
+        self.meas_voltage_ch1 = QtWidgets.QLabel('-')
+        self.meas_current_ch1 = QtWidgets.QLabel('-')
+        f1 = QtGui.QFont(); f1.setPointSize(11); f1.setBold(True)
+        self.meas_voltage_ch1.setFont(f1)
+        self.meas_current_ch1.setFont(f1)
+        ch_grid.addWidget(self.meas_voltage_ch1, 1, 5)
+        ch_grid.addWidget(self.meas_current_ch1, 1, 6)
 
-        # Readouts
-        stats_group = QtWidgets.QGroupBox('Measurements (Read Now)')
-        stats_layout = QtWidgets.QGridLayout()
-        self.meas_voltage = QtWidgets.QLabel('-')
-        self.meas_current = QtWidgets.QLabel('-')
-        font = self.meas_voltage.font()
-        font.setPointSize(16)
-        font.setBold(True)
-        self.meas_voltage.setFont(font)
-        self.meas_current.setFont(font)
-        stats_layout.addWidget(QtWidgets.QLabel('Voltage:'), 0, 0)
-        stats_layout.addWidget(self.meas_voltage, 0, 1)
-        stats_layout.addWidget(QtWidgets.QLabel('Current:'), 1, 0)
-        stats_layout.addWidget(self.meas_current, 1, 1)
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
+        # Channel 2 row
+        ch_grid.addWidget(QtWidgets.QLabel('Ch 2'), 2, 0)
+        self.mode_combo_ch2 = QtWidgets.QComboBox()
+        self.mode_combo_ch2.addItems(['CC', 'CV', 'CR', 'CP'])
+        ch_grid.addWidget(self.mode_combo_ch2, 2, 1)
+        self.mode_value_ch2 = QtWidgets.QLineEdit('0.1')
+        ch_grid.addWidget(self.mode_value_ch2, 2, 2)
+        self.mode_apply_ch2 = QtWidgets.QPushButton('Apply Ch2')
+        self.mode_apply_ch2.clicked.connect(lambda: self.on_apply_mode(2))
+        ch_grid.addWidget(self.mode_apply_ch2, 2, 3)
+        self.input_toggle_ch2 = QtWidgets.QPushButton('Input Off')
+        self.input_toggle_ch2.setCheckable(True)
+        self.input_toggle_ch2.clicked.connect(lambda: self.on_toggle_input(2))
+        ch_grid.addWidget(self.input_toggle_ch2, 2, 4)
+        self.meas_voltage_ch2 = QtWidgets.QLabel('-')
+        self.meas_current_ch2 = QtWidgets.QLabel('-')
+        f2 = QtGui.QFont(); f2.setPointSize(11); f2.setBold(True)
+        self.meas_voltage_ch2.setFont(f2)
+        self.meas_current_ch2.setFont(f2)
+        ch_grid.addWidget(self.meas_voltage_ch2, 2, 5)
+        ch_grid.addWidget(self.meas_current_ch2, 2, 6)
+
+        layout.addLayout(ch_grid)
 
         # Bottom controls
         bottom = QtWidgets.QHBoxLayout()
-        self.read_btn = QtWidgets.QPushButton('Read Now')
+        self.read_btn = QtWidgets.QPushButton('Read Now (Both)')
         self.read_btn.clicked.connect(self.read_once)
         bottom.addWidget(self.read_btn)
         layout.addLayout(bottom)
@@ -119,51 +120,40 @@ class KeysightELPanel(QtWidgets.QWidget):
             idn = dev.get_identification()
             self.dev = dev
             self.status_label.setText(f'Connected: {idn.strip()}')
-            # try to read input state for selected channel
-            ch = int(self.ch_select.currentText())
-            try:
-                on = self.dev.get_input_state(ch)
-                if not self.ch_enabled[ch].isChecked():
+            # Initialize per-channel input states
+            for ch in (1, 2):
+                try:
+                    on = self.dev.get_input_state(ch)
+                except Exception:
                     on = False
-                self.input_toggle.setChecked(on)
-                self.input_toggle.setText('Input On' if on else 'Input Off')
-                self._update_input_toggle_color(on)
-                self._update_input_toggle()
-            except Exception:
-                pass
+                self._set_input_toggle_ui(ch, on)
         except Exception as e:
             self.status_label.setText(f'Connect failed: {e}')
 
-    def on_toggle_input(self):
+    def on_toggle_input(self, ch: int):
         if self.dev is None:
             self.status_label.setText('Not connected')
-            self.input_toggle.setChecked(False)
+            self._set_input_toggle_ui(ch, False)
             return
-        ch = int(self.ch_select.currentText())
-        if not self.ch_enabled[ch].isChecked():
-            self.input_toggle.setChecked(False)
-            self.input_toggle.setText('Input Off')
-            self.status_label.setText(f'Channel {ch} is disabled')
-            return
-        on = self.input_toggle.isChecked()
+    # No per-channel enable gate; buttons act directly on the channel
+        on = self._get_input_toggle_ui(ch)
         try:
             self.dev.set_input(ch, on)
-            self.input_toggle.setText('Input On' if on else 'Input Off')
-            self._update_input_toggle_color(on)
+            self._set_input_toggle_ui(ch, on)
             self.status_label.setText(f'Channel {ch} {"enabled" if on else "disabled"}')
         except Exception as e:
-            self.input_toggle.setChecked(not on)
-            self._update_input_toggle_color(not on)
+            self._set_input_toggle_ui(ch, not on)
             self.status_label.setText(f'Failed to toggle input: {e}')
 
-    def on_apply_mode(self):
+    def on_apply_mode(self, ch: int):
         if self.dev is None:
             self.status_label.setText('Not connected')
             return
-        ch = int(self.ch_select.currentText())
-        mode = self.mode_combo.currentText()
+        mode_combo = self.mode_combo_ch1 if ch == 1 else self.mode_combo_ch2
+        value_edit = self.mode_value_ch1 if ch == 1 else self.mode_value_ch2
+        mode = mode_combo.currentText()
         try:
-            value = float(self.mode_value.text())
+            value = float(value_edit.text())
         except Exception:
             self.status_label.setText('Invalid numeric value')
             return
@@ -178,21 +168,32 @@ class KeysightELPanel(QtWidgets.QWidget):
         if self.dev is None:
             self.status_label.setText('Not connected')
             return
-        ch = int(self.ch_select.currentText())
-        try:
-            v = self.dev.measure_voltage(ch)
-        except Exception:
-            v = None
-        try:
-            i = self.dev.measure_current(ch)
-        except Exception:
-            i = None
-        self.meas_voltage.setText('N/A' if v is None else f'{v:.6f} V')
-        self.meas_current.setText('N/A' if i is None else f'{i:.6f} A')
+        # Read both channels
+        for ch in (1, 2):
+            try:
+                v = self.dev.measure_voltage(ch)
+            except Exception:
+                v = None
+            try:
+                i = self.dev.measure_current(ch)
+            except Exception:
+                i = None
+            if ch == 1:
+                self.meas_voltage_ch1.setText('N/A' if v is None else f'{v:.6f} V')
+                self.meas_current_ch1.setText('N/A' if i is None else f'{i:.6f} A')
+            else:
+                self.meas_voltage_ch2.setText('N/A' if v is None else f'{v:.6f} V')
+                self.meas_current_ch2.setText('N/A' if i is None else f'{i:.6f} A')
         self.status_label.setText('Read complete')
 
-    def _update_input_toggle_color(self, on):
+    def _set_input_toggle_ui(self, ch: int, on: bool):
+        btn = self.input_toggle_ch1 if ch == 1 else self.input_toggle_ch2
+        btn.setChecked(on)
+        btn.setText('Input On' if on else 'Input Off')
         if on:
-            self.input_toggle.setStyleSheet('background-color: #4CAF50; color: white;')
+            btn.setStyleSheet('background-color: #4CAF50; color: white;')
         else:
-            self.input_toggle.setStyleSheet('background-color: #F44336; color: white;')
+            btn.setStyleSheet('background-color: #F44336; color: white;')
+
+    def _get_input_toggle_ui(self, ch: int) -> bool:
+        return (self.input_toggle_ch1.isChecked() if ch == 1 else self.input_toggle_ch2.isChecked())

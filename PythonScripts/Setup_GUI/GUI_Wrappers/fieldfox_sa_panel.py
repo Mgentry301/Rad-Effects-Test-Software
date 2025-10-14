@@ -16,6 +16,8 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         self._spectrum_buffer = queue.Queue(maxsize=1)
         self._capture_thread_running = True
         self._capture_thread = None
+    # Streaming state (controls capture + plotting updates)
+        self.streaming_enabled = True
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_spectrum)
         self.timer.start(1000)  # update every second
@@ -31,13 +33,24 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
     def on_connect(self):
         try:
             self.sa.open()
+            try:
+                # Clear status and pending I/O; reduces -410/-420 on first queries
+                self.sa.sync()
+            except Exception:
+                pass
             self.status_label.setText("Connected")
             self.set_settings_enabled(True)
+            # Start capture shortly after connect so manual add shows live plot
+            try:
+                if self.streaming_enabled:
+                    QtCore.QTimer.singleShot(200, self.start_capture_thread)
+            except Exception:
+                if self.streaming_enabled:
+                    self.start_capture_thread()
         except Exception as e:
             self.status_label.setText(f"Connection Failed: {e}")
             self.set_settings_enabled(False)
-        # Start capture thread
-        self.start_capture_thread()
+    # Capture thread will refresh freq axis each loop, reflecting future setting changes
 
     def start_capture_thread(self):
         """Idempotently start spectrum capture thread (safe to call multiple times)."""
@@ -45,15 +58,19 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             return
         if self.sa.inst is None:
             return
+        if not self.streaming_enabled:
+            return
         import threading, time
         def capture_thread():
-            unit = self.unit_combo.currentText()
-            try:
-                freq = self.sa.get_freq_axis(unit)
-            except Exception:
-                freq = None
+            # Always use current unit and fetch freq axis each loop so X-axis reflects UI changes
+            freq = None
             while self._capture_thread_running:
                 try:
+                    unit = self.unit_combo.currentText()
+                    try:
+                        freq = self.sa.get_freq_axis(unit)
+                    except Exception:
+                        freq = None
                     amplitudes = self.sa.capture_spectrum()
                     if freq is not None and amplitudes is not None:
                         if self._spectrum_buffer.full():
@@ -64,9 +81,20 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
                         self._spectrum_buffer.put((freq, amplitudes))
                 except Exception:
                     pass
-                time.sleep(0.15)
+                time.sleep(1)
         self._capture_thread = threading.Thread(target=capture_thread, daemon=True)
         self._capture_thread.start()
+
+    def stop_capture_thread(self):
+        if self._capture_thread is None:
+            return
+        self._capture_thread_running = False
+        try:
+            self._capture_thread.join(timeout=1.5)
+        except Exception:
+            pass
+        self._capture_thread = None
+        self._capture_thread_running = True
 
     def retry_connect(self):
         # User can call this to retry connection
@@ -88,6 +116,14 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         form.addRow("Unit:", self.unit_combo)
         form.addRow("Instrument Name:", self.name_edit)
         layout.addLayout(form)
+        # Streaming toggle button
+        btn_row = QtWidgets.QHBoxLayout()
+        self.stream_btn = QtWidgets.QPushButton("Pause Streaming")
+        self.stream_btn.setCheckable(True)
+        self.stream_btn.setChecked(True)
+        self.stream_btn.toggled.connect(self.toggle_streaming)
+        btn_row.addWidget(self.stream_btn)
+        layout.addLayout(btn_row)
         self.apply_btn = QtWidgets.QPushButton("Apply Settings")
         self.apply_btn.clicked.connect(self.apply_settings)
         layout.addWidget(self.apply_btn)
@@ -101,10 +137,36 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         # Disable settings until connected
         self.set_settings_enabled(False)
 
+    def toggle_streaming(self, checked: bool):
+        """Toggle live streaming/plotting of spectrum."""
+        self.streaming_enabled = bool(checked)
+        if self.streaming_enabled:
+            self.stream_btn.setText("Pause Streaming")
+            # Start capture if connected
+            try:
+                if self.sa.inst is not None:
+                    self.start_capture_thread()
+            except Exception:
+                pass
+        else:
+            self.stream_btn.setText("Start Streaming")
+            # Stop capture thread; keep last plot displayed
+            try:
+                self.stop_capture_thread()
+            except Exception:
+                pass
+
     def apply_settings(self):
         if self.sa.inst is None:
             QtWidgets.QMessageBox.warning(self, "Not Connected", "Instrument is not connected. Please connect first.")
             return
+        # Pause capture to avoid VISA query races during settings update
+        self.stop_capture_thread()
+        try:
+            # Clear/CLS/OPC before applying new settings
+            self.sa.sync()
+        except Exception:
+            pass
         unit = self.unit_combo.currentText()
         center = self.center_edit.text().strip()
         span = self.span_edit.text().strip()
@@ -118,6 +180,9 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             self.sa.set_start(start, unit)
         if stop:
             self.sa.set_stop(stop, unit)
+        # Resume capture after settings apply
+        if self.streaming_enabled:
+            self.start_capture_thread()
 
     def update_spectrum(self):
         try:
@@ -129,9 +194,9 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             pass
 
     def close(self):
+        self.stop_capture_thread()
         self.sa.close()
         self.timer.stop()
-        self._capture_thread_running = False
 
 class SpectrumCanvas(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -156,8 +221,26 @@ class SpectrumCanvas(QtWidgets.QWidget):
         else:
             self.line.set_xdata(freq)
             self.line.set_ydata(amplitudes)
-        self.ax.set_xlim(freq.min(), freq.max())
-        self.ax.set_ylim(amplitudes.min() - 2, amplitudes.max() + 2)
+        try:
+            fmin = float(np.min(freq))
+            fmax = float(np.max(freq))
+            if fmin == fmax:
+                eps = 1e-6 if fmin == 0 else abs(fmin) * 1e-6
+                fmin -= eps
+                fmax += eps
+            self.ax.set_xlim(fmin, fmax)
+        except Exception:
+            pass
+        try:
+            amin = float(np.min(amplitudes))
+            amax = float(np.max(amplitudes))
+            if amin == amax:
+                eps = 0.1
+                amin -= eps
+                amax += eps
+            self.ax.set_ylim(amin - 2, amax + 2)
+        except Exception:
+            pass
         self.canvas.draw()
 
 # Matplotlib Qt backend import

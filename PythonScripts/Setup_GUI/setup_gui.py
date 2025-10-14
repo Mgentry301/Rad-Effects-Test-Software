@@ -31,6 +31,8 @@ from GUI_Wrappers.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
 from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
+    # Thread-safe log signal
+    log_signal = QtCore.pyqtSignal(str)
     # --- Internal helpers to reduce duplication ---
     def _keithley_apply_settings(self, panel: KeithleyPanel, on: bool):
         if not getattr(panel, 'inst', None):
@@ -54,12 +56,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if not getattr(panel, 'dev', None):
             return
         for ch in (1, 2):
-            if hasattr(panel, 'ch_enabled') and not panel.ch_enabled[ch].isChecked():
-                continue
             try:
                 if on:
-                    mode = panel.mode_combo.currentText()
-                    value = float(panel.mode_value.text())
+                    # Read per-channel UI controls
+                    mode = (panel.mode_combo_ch1.currentText() if ch == 1 else panel.mode_combo_ch2.currentText())
+                    try:
+                        value = float(panel.mode_value_ch1.text() if ch == 1 else panel.mode_value_ch2.text())
+                    except Exception:
+                        value = 0.0
                     panel.dev.set_mode(ch, mode)
                     panel.dev.set_parameter(ch, mode, value)
                     panel.dev.set_input(ch, True)
@@ -67,8 +71,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     panel.dev.set_input(ch, False)
             except Exception:
                 pass
-        panel.input_toggle.setChecked(on)
-        panel.input_toggle.setText('Input On' if on else 'Input Off')
+        # Update per-channel UI toggles if available
+        try:
+            if hasattr(panel, '_set_input_toggle_ui'):
+                panel._set_input_toggle_ui(1, on)
+                panel._set_input_toggle_ui(2, on)
+        except Exception:
+            pass
 
     def _generic_output_toggle(self, panel, on: bool):
         dev = getattr(panel, 'dev', None)
@@ -87,14 +96,25 @@ class MainWindow(QtWidgets.QMainWindow):
         """Unified record button: start/stop recording for selected metrics."""
         if self.record_btn.isChecked():
             excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Reads', '', 'Excel Files (*.xlsx)')[0]
+            if excel_path and not excel_path.lower().endswith('.xlsx'):
+                excel_path += '.xlsx'
             if not excel_path:
                 return
+            # Write one-time bench summary sheet at recording start
+            try:
+                self._write_bench_info(excel_path)
+            except Exception as e:
+                # Non-fatal if we cannot write the bench info
+                try:
+                    self._log(f'Bench Info write failed: {e}')
+                except Exception:
+                    pass
             # Start recording selected metrics
             if self.supply_record_toggle.isChecked():
                 panels = self.get_all_supply_panels()
                 if not panels:
                     self.statusBar().showMessage('No supply panels to record', 4000)
-                    return
+                    # Do not return; continue to other selected metrics (e.g., Spectrum)
                 from supply_recorder import SupplyRecorder
                 def update_supply_read_speed(sps):
                     self.supply_read_speed_label.setText(f'Supply Sample Rate: {sps:.2f} samples/sec')
@@ -106,7 +126,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         import os
                         header_needed = False
                         if os.path.exists(self.excel_path):
-                            wb = load_workbook(self.excel_path)
+                            try:
+                                wb = load_workbook(self.excel_path)
+                            except Exception:
+                                # Corrupt or non-xlsx; start a new workbook
+                                wb = Workbook()
+                                ws = wb.active
+                                ws.title = self.sheet_name
+                                header_needed = True
+                            else:
+                                ws = None
                             if self.sheet_name in wb.sheetnames:
                                 ws = wb[self.sheet_name]
                             else:
@@ -136,7 +165,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         sample_count = 0
                         start_time = time.time()
                         last_report_time = start_time
-                        self.last_perf_time = time.time()
+                        # match other recorders' cadence (update every ~2s)
                         while not self._stop_event.is_set():
                             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                             all_voltages = []
@@ -147,20 +176,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                 all_currents.extend(currents)
                             row = [now] + all_voltages + all_currents
                             self.buffer.append(row)
-                            self.read_count += 1
-                            # Performance reporting every 10 seconds
-                            if time.time() - self.last_perf_time >= 10:
-                                avg_rps = self.read_count / (time.time() - self.last_perf_time)
-                                print(f"[SupplyRecorder] Average reads/sec: {avg_rps:.2f} over last 10 seconds")
-                                update_supply_read_speed(avg_rps)
-                                self.last_perf_time = time.time()
-                                self.read_count = 0
-                                self._flush_buffer()
-                            now = time.time()
-                            if now - last_report_time >= 1.0:
-                                sps = sample_count / (now - start_time)
+                            sample_count += 1
+                            # Update label with average rate at same cadence as other recorders (~2s)
+                            now_ts = time.time()
+                            if now_ts - last_report_time >= 2.0:
+                                elapsed = max(now_ts - start_time, 1e-6)
+                                sps = sample_count / elapsed
                                 update_supply_read_speed(sps)
-                                last_report_time = now
+                                last_report_time = now_ts
                             time.sleep(0.01)  # ~100Hz, adjust as needed
                         self._flush_buffer()
                 self.global_recorder = PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
@@ -177,83 +200,381 @@ class MainWindow(QtWidgets.QMainWindow):
                         break
                 if fieldfox_panel is None:
                     self.statusBar().showMessage('No FieldFox panel found', 4000)
-                    return
-                def update_spectrum_read_speed(sps: float):
-                    self.spectrum_read_speed_label.setText(f'Spectrum Sample Rate: {sps:.2f} samples/sec')
-                self._start_spectrum_capture(fieldfox_panel, excel_path, update_spectrum_read_speed)
-                self._spectrum_recording = True
-                self._spectrum_thread_running = True
-                def running_flag():
-                    return self._spectrum_recording and self._spectrum_thread_running
-                # Thread was created inside helper
-                self.statusBar().showMessage('Started recording spectrum', 4000)
+                    # Skip spectrum but continue to other metrics
+                    fieldfox_panel = None
+                if fieldfox_panel is not None:
+                    def update_spectrum_read_speed(sps: float):
+                        self.spectrum_read_speed_label.setText(f'Spectrum Sample Rate: {sps:.2f} samples/sec')
+                    self._start_spectrum_capture(fieldfox_panel, excel_path, update_spectrum_read_speed)
+                    self._spectrum_recording = True
+                    self._spectrum_thread_running = True
+                    def running_flag():
+                        return self._spectrum_recording and self._spectrum_thread_running
+                    # Thread was created inside helper
+                    self.statusBar().showMessage('Started recording spectrum', 4000)
+            if self.register_record_toggle.isChecked():
+                # Register Recording using ACE Client; read list from current config if available
+                registers = []
+                try:
+                    if hasattr(self, 'register_read_array') and self.register_read_array:
+                        registers = self.register_read_array
+                    else:
+                        # Fallback: try to read from current selection in configs dropdown
+                        cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+                        if cfg_name:
+                            cfg_path = os.path.join(self.configs_dir, cfg_name)
+                            if os.path.exists(cfg_path):
+                                with open(cfg_path, 'r') as f:
+                                    data = json.load(f)
+                                    registers = data.get('register_read_array', [])
+                except Exception:
+                    registers = []
+                if not registers:
+                    QtWidgets.QMessageBox.warning(self, 'No registers configured', 'No register_read_array found in current config. Load a config that defines it.')
+                else:
+                    def update_register_read_speed(sps: float):
+                        try:
+                            self.register_read_speed_label.setText(f'Register Sample Rate: {sps:.2f} samples/sec')
+                        except Exception:
+                            pass
+                    self._start_register_recording(excel_path, registers, update_register_read_speed)
+                    self.statusBar().showMessage('Started recording registers', 4000)
             self.record_btn.setText('Stop Recording')
         else:
             # Stop all recordings
+            self._stop_all_recordings()
+            self.record_btn.setText('Record')
+            self.statusBar().showMessage('Stopped recording', 4000)
+
+    def _stop_all_recordings(self):
+        """Stop supply, spectrum, and register recordings and reset labels."""
+        # Supply
+        try:
             if hasattr(self, 'global_recorder') and self.global_recorder:
-                self.global_recorder.stop()
+                try:
+                    self.global_recorder.stop()
+                except Exception:
+                    pass
                 self.global_recorder = None
-            # --- Stop Spectrum Recording ---
+            if hasattr(self, 'supply_read_speed_label'):
+                self.supply_read_speed_label.setText('Supply Sample Rate: --')
+        except Exception:
+            pass
+        # Spectrum
+        try:
             if hasattr(self, '_spectrum_thread') and self._spectrum_thread:
                 self._spectrum_recording = False
                 self._spectrum_thread_running = False
-                self._spectrum_thread.join(timeout=2)
+                try:
+                    self._spectrum_thread.join(timeout=2)
+                except Exception:
+                    pass
                 self._spectrum_thread = None
-            self.record_btn.setText('Record')
-            self.statusBar().showMessage('Stopped recording', 4000)
+        except Exception:
+            pass
+        # Registers
+        try:
+            if hasattr(self, '_register_thread') and getattr(self, '_register_thread', None):
+                try:
+                    self._register_recording = False
+                except Exception:
+                    pass
+                try:
+                    self._register_thread.join(timeout=2)
+                except Exception:
+                    pass
+                self._register_thread = None
+            if hasattr(self, 'register_read_speed_label'):
+                self.register_read_speed_label.setText('Register Sample Rate: --')
+        except Exception:
+            pass
+
+    def _start_register_recording(self, excel_path: str, registers: list, rate_cb):
+        """Start register recording in background thread (ACE client)."""
+        import threading
+        from openpyxl import Workbook, load_workbook
+        # Normalize registers to integers (accept int, decimal string, or 0x-prefixed)
+        reg_list = []
+        for r in registers:
+            try:
+                if isinstance(r, str):
+                    reg_list.append(int(r, 0))  # auto-detect base
+                else:
+                    reg_list.append(int(r))
+            except Exception:
+                continue
+        if not reg_list:
+            QtWidgets.QMessageBox.warning(self, 'No registers', 'No registers specified to record.')
+            return
+
+        buffer = []
+        flush_interval = 50
+        start_time = time.time()
+        last_report_time = start_time
+        sample_count = 0
+
+        def flush_buffer():
+            if not buffer:
+                return
+            sheet_name = 'register reads'
+            if os.path.exists(excel_path):
+                try:
+                    wb = load_workbook(excel_path)
+                except Exception:
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = sheet_name
+                    header = ['timestamp'] + [f"Reg_{hex(r)}" for r in reg_list]
+                    ws.append(header)
+                else:
+                    ws = None
+                if sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                else:
+                    ws = wb.create_sheet(sheet_name)
+                    header = ['timestamp'] + [f"Reg_{hex(r)}" for r in reg_list]
+                    ws.append(header)
+            else:
+                wb = Workbook()
+                ws = wb.active
+                ws.title = sheet_name
+                header = ['timestamp'] + [f"Reg_{hex(r)}" for r in reg_list]
+                ws.append(header)
+            for row in buffer:
+                ws.append(row)
+            wb.save(excel_path)
+            buffer.clear()
+
+        def worker():
+            nonlocal sample_count, last_report_time
+            # Connect to ACE
+            try:
+                ace_path = r'C:\\Program Files\\Analog Devices\\ACE\\Client'
+                if ace_path not in sys.path:
+                    sys.path.append(ace_path)
+                import clr  # type: ignore
+                clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+                clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+                from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
+                manager = ClientManager.Create()
+                client = manager.CreateRequestClient('localhost:2357')
+            except Exception as e:
+                self._log(f'ACE connection failed: {e}')
+                return
+            self._register_recording = True
+            self._register_thread_running = True
+            try:
+                while getattr(self, '_register_recording', False):
+                    try:
+                        nowts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        values = []
+                        for addr in reg_list:
+                            try:
+                                # ACE expects a string address; send decimal string
+                                val = client.ReadRegister(str(int(addr)))
+                                if hasattr(val, 'strip'):
+                                    val = val.strip('\r\n')
+                            except Exception as err:
+                                val = f'ERR:{err}'
+                            values.append(val)
+                        buffer.append([nowts] + values)
+                        sample_count += 1
+                        if len(buffer) >= flush_interval:
+                            flush_buffer()
+                    except Exception as e:
+                        self._log(f'Register read error: {e}')
+                    now_time = time.time()
+                    if now_time - last_report_time >= 2.0:
+                        elapsed = max(now_time - start_time, 1e-6)
+                        rate_cb(sample_count / elapsed)
+                        last_report_time = now_time
+                    time.sleep(0.05)
+            finally:
+                try:
+                    flush_buffer()
+                except Exception:
+                    pass
+                self._register_thread_running = False
+        self._register_thread = threading.Thread(target=worker, daemon=True)
+        self._register_thread.start()
 
     def _start_spectrum_capture(self, panel: FieldFoxSAPanel, excel_path: str, rate_cb):
         """Start spectrum capture in background thread."""
         import threading
         from openpyxl import Workbook, load_workbook
         import os
+
+        # Ensure flags are set before the worker starts
+        self._spectrum_recording = True
+        self._spectrum_thread_running = True
+
+        # Try to ensure the FieldFox is connected (non-fatal if not yet)
+        try:
+            if getattr(panel.sa, 'inst', None) is None:
+                panel.on_connect()
+        except Exception:
+            pass
+
+        # Read initial frequency axis (may fail; we'll refresh later)
         try:
             freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
         except Exception:
             freq = []
-        buffer = []
-        flush_interval = 100
-        start_time = time.time()
-        last_report_time = start_time
-        sample_count = 0
-        def flush_buffer():
-            if not buffer:
-                return
+
+        # Create/ensure workbook sheet and header up front
+        try:
+            try:
+                n = len(freq)
+            except Exception:
+                n = 0
+            header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
             if os.path.exists(excel_path):
-                wb = load_workbook(excel_path)
+                try:
+                    wb = load_workbook(excel_path)
+                except Exception:
+                    wb = Workbook()
                 if 'capture data' in wb.sheetnames:
                     ws = wb['capture data']
+                    if ws.max_row == 1 and ws.max_column == 1 and not ws['A1'].value:
+                        ws.append(header)
                 else:
                     ws = wb.create_sheet('capture data')
+                    ws.append(header)
             else:
                 wb = Workbook()
                 ws = wb.active
                 ws.title = 'capture data'
-                header = ['timestamp'] + [f"{f:.6f}" for f in freq]
                 ws.append(header)
+            wb.save(excel_path)
+        except Exception:
+            pass
+
+        # Clear any pending I/O on the VISA session to avoid -420 Query Unterminated
+        try:
+            inst = getattr(panel.sa, 'inst', None)
+            if inst is not None and hasattr(inst, 'clear'):
+                inst.clear()
+        except Exception:
+            pass
+
+        buffer = []
+        flush_interval = 25
+        start_time = time.time()
+        last_report_time = start_time
+        last_flush_time = start_time
+        sample_count = 0
+
+        def flush_buffer():
+            if not buffer:
+                return
+            if os.path.exists(excel_path):
+                try:
+                    wb = load_workbook(excel_path)
+                except Exception:
+                    wb = Workbook()
+                    ws = wb.active
+                    ws.title = 'capture data'
+                    try:
+                        n = len(freq)
+                    except Exception:
+                        n = 0
+                    header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+                    ws.append(header)
+                else:
+                    ws = None
+                if 'capture data' in wb.sheetnames:
+                    ws = wb['capture data']
+                else:
+                    ws = wb.create_sheet('capture data')
+                    try:
+                        n = len(freq)
+                    except Exception:
+                        n = 0
+                    header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+                    ws.append(header)
+            else:
+                wb = Workbook()
+                ws = wb.active
+                ws.title = 'capture data'
+                try:
+                    n = len(freq)
+                except Exception:
+                    n = 0
+                header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+                ws.append(header)
+
+            # Ensure header matches current freq axis
+            try:
+                n = len(freq)
+            except Exception:
+                n = 0
+            desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+            try:
+                for ci, val in enumerate(desired_header, start=1):
+                    ws.cell(row=1, column=ci, value=val)
+            except Exception:
+                pass
+
             for row in buffer:
                 ws.append(row)
             wb.save(excel_path)
             buffer.clear()
+
         def running_flag():
             return getattr(self, '_spectrum_recording', False) and getattr(self, '_spectrum_thread_running', False)
+
         def worker():
-            nonlocal sample_count, last_report_time
+            nonlocal sample_count, last_report_time, last_flush_time, freq
             import pyvisa
             while running_flag():
                 try:
+                    # Reconnect if session not open
+                    if getattr(panel.sa, 'inst', None) is None:
+                        try:
+                            panel.on_connect()
+                        except Exception:
+                            pass
+                        time.sleep(0.3)
+                        continue
                     amplitudes = panel.sa.capture_spectrum()
-                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    # Refresh axis if needed
+                    try:
+                        n_freq = len(freq)
+                    except Exception:
+                        n_freq = 0
+                    if not n_freq or (hasattr(amplitudes, '__len__') and len(amplitudes) != n_freq):
+                        try:
+                            freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
+                        except Exception:
+                            pass
+                    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                     row = [now] + [float(a) for a in amplitudes]
                     buffer.append(row)
                     sample_count += 1
-                    if len(buffer) >= flush_interval:
+
+                    # Flush on count threshold or every ~3 seconds
+                    now_ts = time.time()
+                    if len(buffer) >= flush_interval or (now_ts - last_flush_time) >= 3.0:
                         flush_buffer()
+                        last_flush_time = now_ts
                 except pyvisa.errors.InvalidSession:
                     break
                 except Exception as e:
-                    if hasattr(e, 'args') and e.args and ('-410' in str(e.args[0]) or 'Query Interrupted' in str(e)):
-                        pass
+                    # Treat common transient VISA errors as recoverable
+                    msg = ''
+                    try:
+                        msg = str(e.args[0]) if getattr(e, 'args', None) else str(e)
+                    except Exception:
+                        msg = str(e)
+                    if any(tok in msg for tok in ['-410', 'Query Interrupted', '-420', 'Query UNTERMINATED', 'Query Unterminated']):
+                        try:
+                            inst = getattr(panel.sa, 'inst', None)
+                            if inst is not None and hasattr(inst, 'clear'):
+                                inst.clear()
+                        except Exception:
+                            pass
+                        time.sleep(0.05)
+                        continue
                 now_time = time.time()
                 if now_time - last_report_time >= 2.0:
                     elapsed = now_time - start_time
@@ -261,8 +582,239 @@ class MainWindow(QtWidgets.QMainWindow):
                     last_report_time = now_time
                 time.sleep(0.1)
             flush_buffer()
+
         self._spectrum_thread = threading.Thread(target=worker, daemon=True)
         self._spectrum_thread.start()
+
+    def _write_bench_info(self, excel_path: str):
+        """Create or update a 'Bench Info' sheet with a summary of the bench equipment and settings."""
+        from openpyxl import Workbook, load_workbook
+        # Gather info from all tabs
+        rows = []
+        ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        def parse_serial_from_idn(idn: str) -> str:
+            try:
+                parts = [p.strip() for p in idn.replace(";", ",").split(',') if p.strip()]
+                if len(parts) >= 3:
+                    return parts[2]
+                # fallback: look for SN or serial tokens
+                for tok in parts:
+                    if tok.upper().startswith('SN'):
+                        return tok.split(':')[-1].strip()
+            except Exception:
+                pass
+            return ''
+        for i in range(self.tabs.count()):
+            panel = self.tabs.widget(i)
+            tab_name = self.tabs.tabText(i)
+            # Keithley 2230
+            if isinstance(panel, KeithleyPanel):
+                inst = getattr(panel, 'inst', None)
+                connected = bool(inst)
+                resource = ''
+                try:
+                    resource = panel.resource_edit.text().strip()
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if inst:
+                        idn = inst.get_identification()
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                # Setpoints
+                settings = {
+                    'ch1': {'V': getattr(panel.vol_edits.get(1), 'text', lambda: '0')()},
+                    'ch2': {'V': getattr(panel.vol_edits.get(2), 'text', lambda: '0')()},
+                    'ch3': {'V': getattr(panel.vol_edits.get(3), 'text', lambda: '0')()},
+                }
+                try:
+                    settings['ch1']['I'] = panel.iam_edits[1].text()
+                    settings['ch2']['I'] = panel.iam_edits[2].text()
+                    settings['ch3']['I'] = panel.iam_edits[3].text()
+                except Exception:
+                    pass
+                # Output state
+                state_parts = []
+                for ch in (1, 2, 3):
+                    ch_on = None
+                    if connected:
+                        try:
+                            ch_on = bool(inst.get_output_state(ch))
+                        except Exception:
+                            ch_on = None
+                    state_parts.append(f'ch{ch}:{"on" if ch_on else ("off" if ch_on is not None else "?")}')
+                state = ', '.join(state_parts)
+                rows.append([ts, 'Keithley 2230', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+            # Keysight E36233A
+            elif isinstance(panel, KeysightE36233APanel):
+                supply = getattr(panel, 'supply', None)
+                connected = bool(supply)
+                # Try to deduce resource from name field if nothing else is available
+                resource = ''
+                try:
+                    resource = panel.name_edit.text().strip()
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if supply and getattr(supply, 'inst', None):
+                        idn = supply.inst.query("*IDN?")
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                settings = {'ch1': {}, 'ch2': {}}
+                state_parts = []
+                for ch in (1, 2):
+                    try:
+                        settings[f'ch{ch}']['V'] = str(supply.get_voltage_setpoint(ch)) if connected else ''
+                    except Exception:
+                        pass
+                    try:
+                        settings[f'ch{ch}']['I'] = str(supply.get_current_setpoint(ch)) if connected else ''
+                    except Exception:
+                        pass
+                    on_val = None
+                    try:
+                        on_val = bool(supply.get_output_state(ch)) if connected else None
+                    except Exception:
+                        on_val = None
+                    state_parts.append(f'ch{ch}:{"on" if on_val else ("off" if on_val is not None else "?")}')
+                state = ', '.join(state_parts)
+                rows.append([ts, 'Keysight E36233A', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+            # Keysight EL34243A
+            elif isinstance(panel, KeysightELPanel):
+                dev = getattr(panel, 'dev', None)
+                connected = bool(dev)
+                resource = ''
+                try:
+                    resource = panel.resource_edit.text().strip()
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if dev:
+                        idn = dev.get_identification()
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                settings = {
+                    'ch1': {
+                        'mode': getattr(panel.mode_combo_ch1, 'currentText', lambda: '')(),
+                        'value': getattr(panel.mode_value_ch1, 'text', lambda: '')(),
+                    },
+                    'ch2': {
+                        'mode': getattr(panel.mode_combo_ch2, 'currentText', lambda: '')(),
+                        'value': getattr(panel.mode_value_ch2, 'text', lambda: '')(),
+                    },
+                }
+                state = f"ch1:{'on' if panel.input_toggle_ch1.isChecked() else 'off'}, ch2:{'on' if panel.input_toggle_ch2.isChecked() else 'off'}"
+                rows.append([ts, 'Keysight EL34243A', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+            # Hittite Sig Gen
+            elif isinstance(panel, HittiteSigGenPanel):
+                dev = getattr(panel, 'dev', None)
+                connected = bool(dev)
+                resource = ''
+                try:
+                    resource = panel.resource_edit.text().strip()
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if dev:
+                        idn = dev.get_identification()
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                unit = getattr(panel.freq_unit_combo, 'currentText', lambda: '')()
+                settings = {
+                    'frequency': getattr(panel.freq_edit, 'text', lambda: '')(),
+                    'freq_unit': unit,
+                    'power_dB': getattr(panel.pow_edit, 'text', lambda: '')(),
+                }
+                state = 'on' if getattr(panel.output_btn, 'isChecked', lambda: False)() else 'off'
+                rows.append([ts, 'Hittite Sig Gen', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+            # RhodeSchwarz SMA
+            elif isinstance(panel, RhodeSchwarzSMAPanel):
+                dev = getattr(panel, 'dev', None)
+                connected = bool(dev)
+                resource = ''
+                try:
+                    resource = panel.resource_edit.text().strip()
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if dev:
+                        idn = dev.get_identification()
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                unit = getattr(panel.freq_unit_combo, 'currentText', lambda: '')()
+                settings = {
+                    'frequency': getattr(panel.freq_edit, 'text', lambda: '')(),
+                    'freq_unit': unit,
+                    'power_dBm': getattr(panel.pow_edit, 'text', lambda: '')(),
+                }
+                state = 'on' if getattr(panel.output_btn, 'isChecked', lambda: False)() else 'off'
+                rows.append([ts, 'RhodeSchwarz SMA', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+            # Keysight FieldFox
+            elif isinstance(panel, FieldFoxSAPanel):
+                sa = getattr(panel, 'sa', None)
+                connected = bool(getattr(sa, 'inst', None))
+                resource = ''
+                try:
+                    resource = getattr(sa, 'visa_address', '')
+                except Exception:
+                    pass
+                serial = ''
+                try:
+                    if connected:
+                        try:
+                            # prefer robust wrapper query if available
+                            idn = sa._safe_query("*IDN?") if hasattr(sa, '_safe_query') else sa.inst.query("*IDN?")
+                        except Exception:
+                            idn = ''
+                        serial = parse_serial_from_idn(idn)
+                except Exception:
+                    serial = ''
+                unit = getattr(panel.unit_combo, 'currentText', lambda: '')()
+                settings = {
+                    'center': getattr(panel.center_edit, 'text', lambda: '')(),
+                    'span': getattr(panel.span_edit, 'text', lambda: '')(),
+                    'start': getattr(panel.start_edit, 'text', lambda: '')(),
+                    'stop': getattr(panel.stop_edit, 'text', lambda: '')(),
+                    'unit': unit,
+                }
+                # Capture thread as state
+                running = bool(getattr(panel, '_capture_thread', None))
+                state = 'capture:running' if running else 'capture:stopped'
+                rows.append([ts, 'Keysight FieldFox', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
+        # Write into Excel
+        if os.path.exists(excel_path):
+            try:
+                wb = load_workbook(excel_path)
+            except Exception:
+                wb = Workbook()
+        else:
+            wb = Workbook()
+        # Replace Bench Info sheet if it exists
+        if 'Bench Info' in wb.sheetnames:
+            del wb['Bench Info']
+        ws = wb.create_sheet('Bench Info')
+        header = ['timestamp', 'instrument', 'name', 'resource', 'serial', 'connected', 'state', 'settings']
+        ws.append(header)
+        for r in rows:
+            ws.append(r)
+        # If workbook was just created, remove default sheet if empty
+        try:
+            def_sheet = wb['Sheet']
+            if def_sheet.max_row == 1 and def_sheet.max_column == 1 and not def_sheet['A1'].value:
+                wb.remove(def_sheet)
+        except Exception:
+            pass
+        wb.save(excel_path)
 
     def add_instrument_panel(self, resource, label, inst_type):
         """Add a new instrument panel to the tabs based on resource, label, and instrument type."""
@@ -314,26 +866,38 @@ class MainWindow(QtWidgets.QMainWindow):
         return datetime.datetime.now().strftime('%H:%M:%S')
 
     def _log(self, msg: str):
-        txt = f'[{self._ts()}] {msg}'
-        if hasattr(self, 'test_log'):
-            self.test_log.appendPlainText(txt)
-        else:
+        # Emit through Qt signal to ensure GUI-thread-safe appending
+        try:
+            self.log_signal.emit(f'[{self._ts()}] {msg}')
+        except Exception:
+            # Fallback to status bar if no signal yet
             self.statusBar().showMessage(msg, 4000)
+
+    @QtCore.pyqtSlot(str)
+    def _append_log(self, txt: str):
+        # Append to both logs if present and keep them scrolled
+        try:
+            if hasattr(self, 'test_log') and self.test_log is not None:
+                self.test_log.appendPlainText(txt)
+                try:
+                    self.test_log.verticalScrollBar().setValue(self.test_log.verticalScrollBar().maximum())
+                except Exception:
+                    pass
+            if hasattr(self, 'program_log') and self.program_log is not None:
+                self.program_log.appendPlainText(txt)
+                try:
+                    self.program_log.verticalScrollBar().setValue(self.program_log.verticalScrollBar().maximum())
+                except Exception:
+                    pass
+        except Exception:
+            try:
+                self.statusBar().showMessage(txt, 4000)
+            except Exception:
+                pass
 
     def on_abort_clicked(self):
         self._sequence_abort_flag = True
         self._log('Abort requested')
-        if getattr(self, 'program_process', None) is not None:
-            proc = self.program_process
-            try:
-                proc.kill()
-            except Exception:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-            self.program_process = None
-            self._log('Program process terminated')
 
     def _auto_turn_off_panel(self, panel):
         """Safely turn off outputs/inputs for a newly added panel."""
@@ -360,8 +924,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     panel.dev.set_input(ch, False)
                 except Exception:
                     pass
-            panel.input_toggle.setChecked(False)
-            panel.input_toggle.setText('Input Off')
+            # Reflect in UI if available
+            try:
+                if hasattr(panel, '_set_input_toggle_ui'):
+                    panel._set_input_toggle_ui(1, False)
+                    panel._set_input_toggle_ui(2, False)
+            except Exception:
+                pass
         elif isinstance(panel, RhodeSchwarzSMAPanel) and getattr(panel, 'dev', None):
             try:
                 panel.dev.set_output(False)
@@ -422,6 +991,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 continue
         return candidates
+    
     def sequence_power_on(self):
         order = self.seq_order_edit.text().strip()
         if not order:
@@ -461,15 +1031,18 @@ class MainWindow(QtWidgets.QMainWindow):
                                 if hasattr(widget, 'ch_enabled') and not widget.ch_enabled[ch].isChecked():
                                     continue
                                 try:
-                                    mode = widget.mode_combo.currentText()
-                                    value = float(widget.mode_value.text())
+                                    mode = (widget.mode_combo_ch1.currentText() if ch == 1 else widget.mode_combo_ch2.currentText())
+                                    try:
+                                        value = float(widget.mode_value_ch1.text() if ch == 1 else widget.mode_value_ch2.text())
+                                    except Exception:
+                                        value = 0.0
                                     widget.dev.set_mode(ch, mode)
                                     widget.dev.set_parameter(ch, mode, value)
                                     widget.dev.set_input(ch, True)
+                                    if hasattr(widget, '_set_input_toggle_ui'):
+                                        widget._set_input_toggle_ui(ch, True)
                                 except Exception:
                                     pass
-                            widget.input_toggle.setChecked(True)
-                            widget.input_toggle.setText('Input On')
                     elif isinstance(widget, RhodeSchwarzSMAPanel):
                         if widget.dev:
                             try:
@@ -526,10 +1099,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                     continue
                                 try:
                                     widget.dev.set_input(ch, False)
+                                    if hasattr(widget, '_set_input_toggle_ui'):
+                                        widget._set_input_toggle_ui(ch, False)
                                 except Exception:
                                     pass
-                            widget.input_toggle.setChecked(False)
-                            widget.input_toggle.setText('Input Off')
                     elif isinstance(widget, RhodeSchwarzSMAPanel):
                         if widget.dev:
                             try:
@@ -574,18 +1147,27 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
             if use_seq and seq:
-                self._log('Using configured power-up sequence for reset')
+                self._log('Using configured power-up sequence for hard reset')
                 if hasattr(self, 'test_power_toggle_btn'):
                     self.test_power_toggle_btn.setChecked(True)
                     self._update_test_power_toggle_btn(True)
-                # run sequence (no further action required after)
-                self._run_power_sequence()
+                # run sequence then Soft Reset when complete
+                def after_seq():
+                    try:
+                        self.soft_reset()
+                    except Exception:
+                        pass
+                self._run_power_sequence(on_complete=after_seq)
             else:
-                self._log('No sequence configured; powering all instruments ON')
+                self._log('No sequence configured; powering all instruments ON then Soft Reset')
                 self.power_on_all()
-
+                try:
+                    self.soft_reset()
+                except Exception:
+                    pass
         QtCore.QTimer.singleShot(int(delay * 1000), _do_power_on)
         self.statusBar().showMessage(f'Reset part: powered off, will power on in {delay} seconds', 4000)
+    
     def __init__(self):
         super().__init__()
         # Apple liquid glass design stylesheet
@@ -741,6 +1323,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.top_tabs.addTab(setup_widget, "Setup")
 
+        # Connect logger signal to UI appender
+        try:
+            self.log_signal.connect(self._append_log)
+        except Exception:
+            pass
+
         # --- Test Tab ---
         test_widget = QtWidgets.QWidget()
         test_layout = QtWidgets.QVBoxLayout(test_widget)
@@ -764,7 +1352,7 @@ class MainWindow(QtWidgets.QMainWindow):
         abort_row.addWidget(self.abort_btn)
         test_layout.addLayout(abort_row)
 
-    # (Run log moved to Programming tab)
+        # Run log is presented on the Test tab (live updates via self._log)
 
         self.top_tabs.addTab(test_widget, "Sequencing")
 
@@ -779,7 +1367,7 @@ class MainWindow(QtWidgets.QMainWindow):
         prog_widget = QtWidgets.QWidget()
         prog_layout = QtWidgets.QVBoxLayout(prog_widget)
 
-        # Configure Part row (select logic file and run)
+        # Configure Part row only (select logic file and run)
         cfg_row = QtWidgets.QHBoxLayout()
         self.logic_combo = QtWidgets.QComboBox()
         self.logic_combo.setMinimumWidth(420)
@@ -794,32 +1382,14 @@ class MainWindow(QtWidgets.QMainWindow):
         cfg_row.addWidget(self.configure_part_btn)
         prog_layout.addLayout(cfg_row)
 
-        prog_layout.addWidget(QtWidgets.QLabel('Programming Block (Python code)'))
-        self.program_code_edit = QtWidgets.QPlainTextEdit()
-        self.program_code_edit.setPlaceholderText('# Write Python code here.\n# Available variables: main (MainWindow), tabs (QTabWidget), panels (dict name->widget)')
-        prog_layout.addWidget(self.program_code_edit)
-
-        prog_btn_row = QtWidgets.QHBoxLayout()
-        self.run_program_btn = QtWidgets.QPushButton('Run Program')
-        self.run_program_btn.clicked.connect(lambda: self.run_program_code())
-        prog_btn_row.addWidget(self.run_program_btn)
-        # Abort Program button in the Programming tab
-        self.abort_program_btn = QtWidgets.QPushButton('Abort Program')
-        self.abort_program_btn.setStyleSheet('background-color: #FF5722; color: white;')
-        self.abort_program_btn.setEnabled(False)
-        self.abort_program_btn.clicked.connect(self.on_program_abort)
-        prog_btn_row.addWidget(self.abort_program_btn)
-        prog_layout.addLayout(prog_btn_row)
-
-        # Run log (moved here from Sequencing tab)
+        # Programming tab run log (live)
         prog_layout.addWidget(QtWidgets.QLabel('Run Log:'))
-        self.test_log = QtWidgets.QPlainTextEdit()
-        self.test_log.setReadOnly(True)
-        self.test_log.setMaximumHeight(200)
-        prog_layout.addWidget(self.test_log)
+        self.program_log = QtWidgets.QPlainTextEdit()
+        self.program_log.setReadOnly(True)
+        self.program_log.setMaximumHeight(220)
+        prog_layout.addWidget(self.program_log)
 
         self.top_tabs.addTab(prog_widget, 'Programming')
-
 
         # --- Test Tab ---
         test2_widget = QtWidgets.QWidget()
@@ -849,17 +1419,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectrum_record_toggle = QtWidgets.QCheckBox('Spectrum')
         self.spectrum_record_toggle.setChecked(False)
         record_row.addWidget(self.spectrum_record_toggle)
+        # Register recording toggle
+        self.register_record_toggle = QtWidgets.QCheckBox('Register')
+        self.register_record_toggle.setChecked(False)
+        record_row.addWidget(self.register_record_toggle)
         self.supply_read_speed_label = QtWidgets.QLabel('Supply Sample Rate: --')
         self.spectrum_read_speed_label = QtWidgets.QLabel('Spectrum Sample Rate: --')
+        self.register_read_speed_label = QtWidgets.QLabel('Register Sample Rate: --')
         record_row.addWidget(self.supply_read_speed_label)
         record_row.addWidget(self.spectrum_read_speed_label)
+        record_row.addWidget(self.register_read_speed_label)
         # Add more toggles here for future metrics
         test2_layout.addLayout(record_row)
 
-        # Program / Reprogram button
+        # Soft Reset button (runs Configure Part logic)
         prog_row = QtWidgets.QHBoxLayout()
-        self.program_now_btn = QtWidgets.QPushButton('Program / Reprogram')
-        self.program_now_btn.clicked.connect(lambda: self.run_program_code())
+        self.program_now_btn = QtWidgets.QPushButton('Soft Reset')
+        self.program_now_btn.clicked.connect(self.soft_reset)
         prog_row.addWidget(self.program_now_btn)
         test2_layout.addLayout(prog_row)
 
@@ -869,17 +1445,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reset_delay_edit = QtWidgets.QLineEdit('2.0')
         self.reset_delay_edit.setMaximumWidth(80)
         reset_row.addWidget(self.reset_delay_edit)
-        self.reset_btn = QtWidgets.QPushButton('Reset Device')
+        self.reset_btn = QtWidgets.QPushButton('Hard Reset')
         self.reset_btn.clicked.connect(self.reset_part)
         reset_row.addWidget(self.reset_btn)
         test2_layout.addLayout(reset_row)
 
-        # Run Test orchestration: power on (sequence) then program
-        run_row = QtWidgets.QHBoxLayout()
-        self.run_test_btn = QtWidgets.QPushButton('Run Test (Power+Program)')
-        self.run_test_btn.clicked.connect(self.run_test_sequence)
-        run_row.addWidget(self.run_test_btn)
-        test2_layout.addLayout(run_row)
+        # Live run log for Configure Part
+        test2_layout.addWidget(QtWidgets.QLabel('Run Log:'))
+        self.test_log = QtWidgets.QPlainTextEdit()
+        self.test_log.setReadOnly(True)
+        self.test_log.setMaximumHeight(220)
+        test2_layout.addWidget(self.test_log)
 
         self.top_tabs.addTab(test2_widget, 'Test')
 
@@ -895,7 +1471,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for i in range(self.tabs.count()):
             names.append(self.tabs.tabText(i))
         return names
-
 
     def power_off_all(self):
         """Turn off outputs/inputs for all instruments in tabs."""
@@ -937,9 +1512,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_global_power_btns(True)
         self.statusBar().showMessage('All instrument outputs/inputs turned ON', 4000)
 
-
-    # Do not autoload config on startup; GUI starts empty
-
     def refresh_configs_list(self):
         self.load_combo.clear()
         files = [f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')]
@@ -947,6 +1519,78 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_combo.addItem(f)
         if files:
             self.load_combo.setCurrentIndex(0)
+
+    def disconnect_all_instruments(self):
+        """Cleanly stop recordings, disconnect/clear all panels and instruments, and remove tabs.
+        This prevents VISA/SCPI contention when loading a new config (e.g., FieldFox double-connect).
+        """
+        try:
+            self.statusBar().showMessage('Disconnecting all instruments…', 3000)
+        except Exception:
+            pass
+        # Stop any ongoing recordings first
+        try:
+            # If Record toggle is on, untoggle it for UI consistency
+            if hasattr(self, 'record_btn') and self.record_btn.isChecked():
+                try:
+                    self.record_btn.setChecked(False)
+                except Exception:
+                    pass
+            self._stop_all_recordings()
+        except Exception:
+            pass
+        # Iterate tabs backwards: close panels and remove tabs
+        try:
+            for i in range(self.tabs.count() - 1, -1, -1):
+                w = self.tabs.widget(i)
+                # Try to turn off outputs/inputs first (best-effort)
+                try:
+                    if isinstance(w, KeithleyPanel):
+                        self._keithley_apply_settings(w, False)
+                    elif isinstance(w, KeysightELPanel):
+                        self._keysight_el_apply_settings(w, False)
+                    elif isinstance(w, (HittiteSigGenPanel, RhodeSchwarzSMAPanel, FieldFoxSAPanel)):
+                        self._generic_output_toggle(w, False)
+                except Exception:
+                    pass
+                # Close panel (panels should release VISA sessions/threads in close())
+                try:
+                    if hasattr(w, 'close'):
+                        w.close()
+                except Exception:
+                    pass
+                # As a fallback, try to close raw instrument handles
+                try:
+                    for attr in ('inst', 'dev', 'sa'):
+                        obj = getattr(w, attr, None)
+                        if obj is None:
+                            continue
+                        # FieldFox wrapper: has close()
+                        if hasattr(obj, 'close'):
+                            try:
+                                obj.close()
+                            except Exception:
+                                pass
+                        # VISA instrument directly
+                        if hasattr(obj, 'inst') and hasattr(obj.inst, 'close'):
+                            try:
+                                obj.inst.close()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                # Remove tab
+                try:
+                    self.tabs.removeTab(i)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Small yield to let timers/threads settle
+        try:
+            QtWidgets.QApplication.processEvents()
+        except Exception:
+            pass
 
     def save_config_dialog(self):
         # Ask for filename to save config
@@ -1008,10 +1652,22 @@ class MainWindow(QtWidgets.QMainWindow):
             elif isinstance(widget, KeysightELPanel):
                 entry['channels'] = {}
                 for ch in (1, 2):
+                    # Read per-channel UI
+                    mode = (widget.mode_combo_ch1.currentText() if ch == 1 else widget.mode_combo_ch2.currentText())
+                    value = (widget.mode_value_ch1.text() if ch == 1 else widget.mode_value_ch2.text())
+                    # Determine input state: prefer device state if connected
+                    inp = False
+                    try:
+                        if getattr(widget, 'dev', None):
+                            inp = bool(widget.dev.get_input_state(ch))
+                        elif hasattr(widget, '_get_input_toggle_ui'):
+                            inp = bool(widget._get_input_toggle_ui(ch))
+                    except Exception:
+                        pass
                     entry['channels'][ch] = {
-                        'mode': widget.mode_combo.currentText(),
-                        'value': widget.mode_value.text(),
-                        'input': widget.input_toggle.isChecked()
+                        'mode': mode,
+                        'value': value,
+                        'input': inp
                     }
             elif isinstance(widget, KeysightE36233APanel):
                 entry['channels'] = {}
@@ -1066,8 +1722,8 @@ class MainWindow(QtWidgets.QMainWindow):
             'instruments': instruments,
             'sequence': seq,
             'use_sequence': use_seq,
-            'program_code': self.program_code_edit.toPlainText() if hasattr(self, 'program_code_edit') else '',
-            'program_logic_path': self._get_selected_logic_path()
+            'program_logic_path': self._get_selected_logic_path(),
+            'register_read_array': getattr(self, 'register_read_array', [])
         }
         try:
             with open(path, 'w') as f:
@@ -1089,9 +1745,16 @@ class MainWindow(QtWidgets.QMainWindow):
         if not os.path.exists(path):
             QtWidgets.QMessageBox.information(self, 'No config', f'Config file not found: {path}')
             return
-        # Remove all tabs
-        while self.tabs.count():
-            self.tabs.removeTab(0)
+        # Proactively disconnect and clear any existing instruments/panels
+        try:
+            self.disconnect_all_instruments()
+        except Exception:
+            # Fallback: remove tabs if disconnect failed
+            while self.tabs.count():
+                try:
+                    self.tabs.removeTab(0)
+                except Exception:
+                    break
 
         # Read config file and extract instruments, sequence, use_sequence
         content = None
@@ -1133,6 +1796,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._ensure_logic_in_combo(logic_path)
             except Exception:
                 pass
+            # load register list if present
+            try:
+                self.register_read_array = content.get('register_read_array', [])
+            except Exception:
+                self.register_read_array = []
 
         used_resources = set()
         for entry in instruments:
@@ -1159,7 +1827,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         fresh_rm = pyvisa.ResourceManager()
                         for res in fresh_rm.list_resources():
                             try:
-                                dev = fresh_rm.open_resource(res, timeout=1500)
+                                dev = fresh_rm.open_resource(res, timeout=200)
                                 try:
                                     idn = dev.query('*IDN?').upper()
                                 except Exception:
@@ -1245,10 +1913,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Auto-connect panel after loading
                 if hasattr(panel, 'on_connect'):
                     try:
-                        if inst_type == 'Keysight FieldFox':
-                            # Delay FieldFox connection to allow VISA to initialize
-                            QtCore.QTimer.singleShot(1000, panel.on_connect)
-                        else:
+                        # For FieldFox, defer connection to the FieldFox settings block below
+                        if inst_type != 'Keysight FieldFox':
                             panel.on_connect()
                     except Exception:
                         pass
@@ -1270,12 +1936,8 @@ class MainWindow(QtWidgets.QMainWindow):
                             except Exception:
                                 pass
                 elif inst_type == 'Keysight EL34243A':
-                    # Use the same logic as manual add for all instruments
+                    # Apply saved per-channel settings directly to the existing panel
                     tab_label = entry.get('name', resource)
-                    self.add_instrument_panel(resource, tab_label, inst_type)
-                    # After panel is added, set per-panel settings as before
-                    panel = self.tabs.widget(self.tabs.count() - 1)
-                    used_resources.add(resource)
                     if hasattr(panel, 'resource_edit'):
                         panel.resource_edit.setText(resource)
                     if hasattr(panel, 'name_edit'):
@@ -1284,6 +1946,47 @@ class MainWindow(QtWidgets.QMainWindow):
                         name_val = entry.get('name') if isinstance(entry, dict) else None
                         if name_val and hasattr(panel, 'name_edit'):
                             panel.name_edit.setText(name_val)
+                    except Exception:
+                        pass
+                    # Apply saved channel settings (mode/value/input) for ch 1 and 2
+                    try:
+                        ch_cfgs = entry.get('channels', {})
+                        for ch in (1, 2):
+                            ch_cfg = ch_cfgs.get(str(ch)) or ch_cfgs.get(ch)
+                            if not ch_cfg:
+                                continue
+                            # Update per-channel UI fields
+                            try:
+                                if hasattr(panel, 'mode_combo_ch1') and hasattr(panel, 'mode_combo_ch2'):
+                                    combo = panel.mode_combo_ch1 if ch == 1 else panel.mode_combo_ch2
+                                    if ch_cfg.get('mode'):
+                                        idx = combo.findText(str(ch_cfg.get('mode')))
+                                        if idx != -1:
+                                            combo.setCurrentIndex(idx)
+                                if hasattr(panel, 'mode_value_ch1') and hasattr(panel, 'mode_value_ch2') and (ch_cfg.get('value') is not None):
+                                    (panel.mode_value_ch1 if ch == 1 else panel.mode_value_ch2).setText(str(ch_cfg.get('value')))
+                            except Exception:
+                                pass
+                            # Apply to hardware if connected
+                            if getattr(panel, 'dev', None):
+                                try:
+                                    mode = str(ch_cfg.get('mode', 'CC'))
+                                    try:
+                                        value = float(ch_cfg.get('value', '0'))
+                                    except Exception:
+                                        value = 0.0
+                                    panel.dev.set_mode(ch, mode)
+                                    panel.dev.set_parameter(ch, mode, value)
+                                except Exception:
+                                    pass
+                                # Input state
+                                try:
+                                    inp = bool(ch_cfg.get('input', False))
+                                    panel.dev.set_input(ch, inp)
+                                    if hasattr(panel, '_set_input_toggle_ui'):
+                                        panel._set_input_toggle_ui(ch, inp)
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 elif inst_type == 'RhodeSchwarz SMA':
@@ -1395,19 +2098,33 @@ class MainWindow(QtWidgets.QMainWindow):
                         # Ensure connection and capture thread start after short delay
                         def attempt(idx=0):
                             try:
+                                # If already connected, don't re-connect
                                 if getattr(panel.sa, 'inst', None) is None and hasattr(panel, 'on_connect'):
                                     panel.on_connect()
-                                if getattr(panel.sa, 'inst', None) is not None:
-                                    try:
-                                        panel.apply_settings()
-                                    except Exception:
-                                        pass
-                                    # Explicitly start capture (idempotent)
-                                    try:
-                                        panel.start_capture_thread()
-                                    except Exception:
-                                        pass
-                                    return  # success
+                                if getattr(panel.sa, 'inst', None) is None:
+                                    raise RuntimeError('Not connected yet')
+                                # Clear pending I/O and sync once before applying settings
+                                try:
+                                    inst = getattr(panel.sa, 'inst', None)
+                                    if inst is not None and hasattr(inst, 'clear'):
+                                        inst.clear()
+                                except Exception:
+                                    pass
+                                try:
+                                    if hasattr(panel.sa, 'sync'):
+                                        panel.sa.sync()
+                                except Exception:
+                                    pass
+                                try:
+                                    panel.apply_settings()
+                                except Exception:
+                                    pass
+                                # Start capture thread if not already running (idempotent)
+                                try:
+                                    panel.start_capture_thread()
+                                except Exception:
+                                    pass
+                                return  # success
                             except Exception:
                                 pass
                             # retry up to 5 times
@@ -1436,6 +2153,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._refresh_logic_combo()
         except Exception:
             pass
+        # remember last loaded config path for use during recording
+        try:
+            self._last_loaded_config_path = path
+        except Exception:
+            pass
+    
     def _refresh_seq_instr_combo(self):
         self.seq_instr_combo.clear()
         for i in range(self.tabs.count()):
@@ -1468,8 +2191,23 @@ class MainWindow(QtWidgets.QMainWindow):
         def scan_resource(res):
             try:
                 inst = rm.open_resource(res, timeout=3000)
-                idn = inst.query("*IDN?").strip()
-                inst.close()
+                try:
+                    # Clear any pending I/O and status before IDN query
+                    try:
+                        inst.clear()
+                    except Exception:
+                        pass
+                    try:
+                        inst.write("*CLS")
+                        _ = inst.query("*OPC?")
+                    except Exception:
+                        pass
+                    idn = inst.query("*IDN?").strip()
+                finally:
+                    try:
+                        inst.close()
+                    except Exception:
+                        pass
                 if 'Keithley' in idn and '2230' in idn:
                     return ('Keithley 2230', res, 'Keithley 2230')
                 elif 'Keysight' in idn and ('EL34243A' in idn or 'Electronic Load' in idn):
@@ -1755,189 +2493,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     except Exception:
                         pass
 
-    def run_program_code(self):
-        """Run the user-supplied programming code in a separate Python process.
-        The code is written to a temporary file and executed with the same Python
-        interpreter. Stdout/stderr are captured and appended to the Test Run Log.
-        This avoids blocking the GUI and isolates errors.
-        """
-        if not hasattr(self, 'program_code_edit'):
+    def soft_reset(self):
+        """Soft Reset: run the same Configure Part logic as the Programming page."""
+        logic_path = self._get_selected_logic_path()
+        if not logic_path:
+            QtWidgets.QMessageBox.information(self, 'No logic selected', 'Please select a logic .py file on the Programming tab.')
             return
-        code = self.program_code_edit.toPlainText()
-        if not code.strip():
-            self._log('No program code to run')
+        if not os.path.exists(logic_path):
+            QtWidgets.QMessageBox.warning(self, 'Missing file', f'Logic file not found:\n{logic_path}')
             return
-
-        # write to a temporary file
-        try:
-            tf = tempfile.NamedTemporaryFile('w', delete=False, suffix='.py')
-            tf.write('# Auto-generated program file from GUI\n')
-            # provide a small bootstrap that injects 'main','tabs','panels' into globals
-            tf.write('import sys\n')
-            tf.write('def _bootstrap(main=None, tabs=None, panels=None):\n')
-            tf.write('    globals().update({"main": main, "tabs": tabs, "panels": panels})\n')
-            tf.write('\n')
-            tf.write(code)
-            tf.flush()
-            tf.close()
-            self._program_tempfile = tf.name
-        except Exception as e:
-            self._log(f'Failed to write temp program file: {e}')
-            return
-
-        # prepare process
-        try:
-            proc = QtCore.QProcess(self)
-            self.program_process = proc
-            # set up handlers
-            proc.readyReadStandardOutput.connect(lambda: self._on_proc_stdout(proc))
-            proc.readyReadStandardError.connect(lambda: self._on_proc_stderr(proc))
-            proc.finished.connect(lambda code, status: self._on_proc_finished(code, status, proc))
-            python_exe = sys.executable or 'python'
-            args = [self._program_tempfile]
-            self._log(f'Starting program: {os.path.basename(self._program_tempfile)}')
-            proc.start(python_exe, args)
-            # Update UI: disable run buttons, enable abort
-            try:
-                if hasattr(self, 'run_program_btn'):
-                    self.run_program_btn.setEnabled(False)
-                if hasattr(self, 'abort_program_btn'):
-                    self.abort_program_btn.setEnabled(True)
-                if hasattr(self, 'program_now_btn'):
-                    self.program_now_btn.setEnabled(False)
-            except Exception:
-                pass
-        except Exception as e:
-            self._log(f'Failed to start program process: {e}')
-
-    def _on_proc_stdout(self, proc: QtCore.QProcess):
-        try:
-            data = proc.readAllStandardOutput().data().decode('utf-8', errors='replace')
-            for line in data.splitlines():
-                self._log(f'OUT: {line}')
-        except Exception:
-            pass
-
-    def _on_proc_stderr(self, proc: QtCore.QProcess):
-        try:
-            data = proc.readAllStandardError().data().decode('utf-8', errors='replace')
-            for line in data.splitlines():
-                self._log(f'ERR: {line}')
-        except Exception:
-            pass
-
-    def _on_proc_finished(self, exit_code, exit_status, proc: QtCore.QProcess):
-        try:
-            self._log(f'Program process finished (code={exit_code})')
-        except Exception:
-            pass
-        finally:
-            try:
-                if proc is self.program_process:
-                    self.program_process = None
-            except Exception:
-                pass
-            # cleanup temp file
-            try:
-                if getattr(self, '_program_tempfile', None):
-                    os.remove(self._program_tempfile)
-                    self._program_tempfile = None
-            except Exception:
-                pass
-        # Update UI buttons
-        try:
-            if hasattr(self, 'run_program_btn'):
-                self.run_program_btn.setEnabled(True)
-            if hasattr(self, 'abort_program_btn'):
-                self.abort_program_btn.setEnabled(False)
-            if hasattr(self, 'program_now_btn'):
-                self.program_now_btn.setEnabled(True)
-            if hasattr(self, 'configure_part_btn'):
-                self.configure_part_btn.setEnabled(True)
-        except Exception:
-            pass
-
-    def on_program_abort(self):
-        # Abort the running program process if present
-        try:
-            if getattr(self, 'program_process', None) is not None:
-                try:
-                    self.program_process.kill()
-                except Exception:
-                    try:
-                        self.program_process.terminate()
-                    except Exception:
-                        pass
-                self._log('Program aborted by user')
-                self.program_process = None
-        except Exception:
-            pass
-        # Also signal abort for direct logic thread (best-effort – user logic must cooperate if long-running)
-        try:
-            if getattr(self, '_logic_thread', None) is not None and self._logic_thread.is_alive():
-                self._logic_abort = True
-                self._log('Requested abort of Configure Part logic (will stop when safe)')
-        except Exception:
-            pass
-        # Update UI
-        try:
-            if hasattr(self, 'run_program_btn'):
-                self.run_program_btn.setEnabled(True)
-            if hasattr(self, 'abort_program_btn'):
-                self.abort_program_btn.setEnabled(False)
-            if hasattr(self, 'program_now_btn'):
-                self.program_now_btn.setEnabled(True)
-            if hasattr(self, 'configure_part_btn'):
-                self.configure_part_btn.setEnabled(True)
-        except Exception:
-            pass
-
-    def run_test_sequence(self):
-        """Run the Test sequence: apply power sequence (if enabled), then run programming code (if present).
-        Any blank menus (no sequence, no program) are ignored per user request.
-        """
-        # Step 1: Power on according to sequence or all-on
-        use_seq = False
-        try:
-            if hasattr(self, 'power_seq_builder'):
-                use_seq = self.power_seq_builder.use_sequence()
-        except Exception:
-            use_seq = False
-
-        # If there is a sequence and it's enabled, run it; otherwise power on all
-        seq = []
-        try:
-            if hasattr(self, 'power_seq_builder'):
-                seq = self.power_seq_builder.get_sequence()
-        except Exception:
-            seq = []
-        if use_seq and seq:
-            # Ensure UI shows power-on state
-            if hasattr(self, 'test_power_toggle_btn'):
-                self.test_power_toggle_btn.setChecked(True)
-                self._update_test_power_toggle_btn(True)
-
-            # Run the sequence and when complete, run programming if present
-            def after_seq():
-                try:
-                    self._program_after_power()
-                except Exception:
-                    pass
-
-            self._run_power_sequence(on_complete=after_seq)
-        else:
-            # No sequence: power on all now
-            self.power_on_all()
-            # Immediately program (if code present)
-            self._program_after_power()
-
-    def _program_after_power(self):
-        # Run program code only if present
-        try:
-            if hasattr(self, 'program_code_edit') and self.program_code_edit.toPlainText().strip():
-                self.run_program_code()
-        except Exception:
-            pass
+        self.run_configure_part(logic_path)
 
     # --- Configure Part (external logic) ---
     def _refresh_logic_combo(self):
@@ -2033,6 +2598,36 @@ class MainWindow(QtWidgets.QMainWindow):
         def worker():
             import sys as _sys
             import importlib.util as _importlib_util
+            import threading as _th
+            import time as _time
+            import logging as _logging
+            # Forward prints from logic to the GUI logs
+            class _StreamForwarder:
+                def __init__(self, cb):
+                    self._cb = cb
+                    self._buf = ''
+                    self._lock = _th.Lock()
+                def write(self, s):
+                    if not s:
+                        return
+                    with self._lock:
+                        self._buf += str(s)
+                        while '\n' in self._buf:
+                            line, self._buf = self._buf.split('\n', 1)
+                            if line.strip():
+                                try:
+                                    self._cb(line)
+                                except Exception:
+                                    pass
+                def flush(self):
+                    # Flush any partial line as-is to keep UI fresh
+                    with self._lock:
+                        if self._buf.strip():
+                            try:
+                                self._cb(self._buf)
+                            except Exception:
+                                pass
+                        self._buf = ''
             try:
                 # Ensure ACE Client path is available
                 ace_path = r'C:\\Program Files\\Analog Devices\\ACE\\Client'
@@ -2044,6 +2639,40 @@ class MainWindow(QtWidgets.QMainWindow):
                 from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
                 manager = ClientManager.Create()
                 client = manager.CreateRequestClient('localhost:2357')
+                # Redirect stdout/stderr so print() in logic shows in the GUI
+                _old_out, _old_err = _sys.stdout, _sys.stderr
+                _fw = _StreamForwarder(post_log)
+                _sys.stdout = _fw
+                _sys.stderr = _fw
+                # Hook Python logging to the same stream so logging.info/etc show up
+                _log_handler = _logging.StreamHandler(_fw)
+                _log_handler.setLevel(_logging.DEBUG)
+                _log_handler.setFormatter(_logging.Formatter('%(message)s'))
+                _root_logger = _logging.getLogger()
+                _root_logger.addHandler(_log_handler)
+                # Periodic flusher to surface partial lines at ~0.5s cadence
+                _stop_evt = _th.Event()
+                def _periodic_flush():
+                    while not _stop_evt.is_set():
+                        try:
+                            _fw.flush()
+                        except Exception:
+                            pass
+                        _time.sleep(0.5)
+                _flush_thread = _th.Thread(target=_periodic_flush, daemon=True)
+                _flush_thread.start()
+                # Use signal-based logger for thread-safe UI update
+                try:
+                    self._log('ACE connection established; running logic...')
+                except Exception:
+                    # Last-resort: attempt direct append if logs exist
+                    try:
+                        if hasattr(self, 'test_log'):
+                            self.test_log.appendPlainText('ACE connection established; running logic...')
+                        if hasattr(self, 'program_log'):
+                            self.program_log.appendPlainText('ACE connection established; running logic...')
+                    except Exception:
+                        pass
                 # Load logic module from given path
                 spec = _importlib_util.spec_from_file_location('selected_logic', logic_path)
                 mod = _importlib_util.module_from_spec(spec)
@@ -2056,14 +2685,36 @@ class MainWindow(QtWidgets.QMainWindow):
                     func = getattr(mod, 'logic')
                 if func is None:
                     self._log('Selected logic file must define execute_macro(client) or logic(client)')
+                    # Restore streams before returning
+                    try:
+                        _fw.flush()
+                    except Exception:
+                        pass
+                    _sys.stdout, _sys.stderr = _old_out, _old_err
                     return
-                self._log('ACE connection established; running logic...')
                 try:
                     func(client)
-                finally:                    
+                finally:
                     self._log('Configure Part finished')
+                    # Flush any buffered text and restore streams
+                    try:
+                        _fw.flush()
+                    except Exception:
+                        pass
+                    # Stop periodic flusher
+                    try:
+                        _stop_evt.set()
+                        _flush_thread.join(timeout=1.0)
+                    except Exception:
+                        pass
+                    # Detach logging handler
+                    try:
+                        _root_logger.removeHandler(_log_handler)
+                    except Exception:
+                        pass
+                    _sys.stdout, _sys.stderr = _old_out, _old_err                    
             except Exception as e:
-                self._log(f'Configure Part error: {e}')
+                post_log(f'Configure Part error: {e}')
 
         import threading as _threading
         self._logic_thread = _threading.Thread(target=worker, daemon=True)
