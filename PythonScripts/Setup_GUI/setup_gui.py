@@ -1258,7 +1258,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 font-size: 14px;
                 color: #222;
             }
-        ''')
+    ''')
         # runtime control state for sequencing/program runs
         self._sequence_abort_flag = False
         self.program_process = None
@@ -1266,6 +1266,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._logic_thread = None
         self._logic_poll_timer = None
         self._logic_abort = False
+        # aliasing for portable configs
+        self.alias_dir = os.path.join(os.path.dirname(__file__), 'bench alias')
+        os.makedirs(self.alias_dir, exist_ok=True)
+        self.alias_profile = ''
+        self.alias_map = {}
         # programming logic directory (external logic files for Configure Part)
         try:
             self.program_logic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'programming logics')
@@ -1459,6 +1464,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.top_tabs.addTab(test2_widget, 'Test')
 
+        # --- Settings Tab (Aliases) ---
+        self._init_settings_tab()
+
         # Auto-scan VISA resources shortly after startup so detected devices
         # appear without the user needing to press Scan (Scan button remains as backup).
         try:
@@ -1519,6 +1527,222 @@ class MainWindow(QtWidgets.QMainWindow):
             self.load_combo.addItem(f)
         if files:
             self.load_combo.setCurrentIndex(0)
+        # Also refresh alias profiles list in Settings tab
+        try:
+            if hasattr(self, 'alias_profile_combo'):
+                self._refresh_alias_profiles()
+        except Exception:
+            pass
+
+    # ---------- Alias profiles (Settings tab) ----------
+    def _alias_profile_path(self, name: str) -> str:
+        return os.path.join(self.alias_dir, f"{name}.json")
+
+    def _list_alias_profiles(self):
+        try:
+            return [os.path.splitext(f)[0] for f in os.listdir(self.alias_dir) if f.lower().endswith('.json')]
+        except Exception:
+            return []
+
+    def _refresh_alias_profiles(self):
+        try:
+            names = sorted(self._list_alias_profiles())
+            self.alias_profile_combo.clear()
+            for n in names:
+                self.alias_profile_combo.addItem(n)
+            # reflect current
+            if self.alias_profile:
+                idx = self.alias_profile_combo.findText(self.alias_profile)
+                if idx != -1:
+                    self.alias_profile_combo.setCurrentIndex(idx)
+        except Exception:
+            pass
+
+    def _apply_alias_profile_to_ui(self):
+        try:
+            self.alias_list.clear()
+            for k in sorted(self.alias_map.keys()):
+                self.alias_list.addItem(f"{k}  ->  {self.alias_map[k]}")
+            self.alias_profile_name.setText(self.alias_profile or '')
+        except Exception:
+            pass
+
+    def _load_alias_profile(self, name: str):
+        try:
+            path = self._alias_profile_path(name)
+            if not os.path.exists(path):
+                return
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.alias_profile = data.get('name', name)
+            self.alias_map = data.get('aliases', {}) or {}
+            self._apply_alias_profile_to_ui()
+            self.statusBar().showMessage(f"Loaded alias profile: {self.alias_profile}", 4000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Alias load failed', str(e))
+
+    def _save_alias_profile(self, name: str = None):
+        try:
+            name = name or self.alias_profile_name.text().strip()
+            if not name:
+                QtWidgets.QMessageBox.information(self, 'Missing name', 'Enter a profile name.')
+                return
+            payload = {'name': name, 'aliases': self.alias_map}
+            path = self._alias_profile_path(name)
+            with open(path, 'w') as f:
+                json.dump(payload, f, indent=2)
+            self.alias_profile = name
+            self._refresh_alias_profiles()
+            self._apply_alias_profile_to_ui()
+            self.statusBar().showMessage(f"Saved alias profile: {name}", 4000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Alias save failed', str(e))
+
+    def _delete_alias_profile(self):
+        try:
+            name = self.alias_profile_combo.currentText().strip()
+            if not name:
+                return
+            resp = QtWidgets.QMessageBox.question(self, 'Delete profile', f'Delete alias profile "{name}"?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if resp != QtWidgets.QMessageBox.Yes:
+                return
+            path = self._alias_profile_path(name)
+            if os.path.exists(path):
+                os.remove(path)
+            if self.alias_profile == name:
+                self.alias_profile = ''
+                self.alias_map = {}
+            self._refresh_alias_profiles()
+            self._apply_alias_profile_to_ui()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Alias delete failed', str(e))
+
+    def _build_aliases_from_resources(self, resources: list):
+        """Classify and assign type+index aliases for current VISA resources."""
+        # Simple classification via *IDN?
+        try:
+            rm = pyvisa.ResourceManager()
+        except Exception:
+            rm = None
+        cats = {}
+        for res in resources:
+            typ = 'Unknown'
+            idn = ''
+            try:
+                if rm:
+                    inst = rm.open_resource(res, timeout=1500)
+                    try:
+                        try:
+                            inst.clear()
+                        except Exception:
+                            pass
+                        idn = inst.query('*IDN?').upper()
+                    finally:
+                        try:
+                            inst.close()
+                        except Exception:
+                            pass
+            except Exception:
+                idn = ''
+            if 'KEITHLEY' in idn or '2230' in idn:
+                typ = 'Keithley'
+            elif 'EL34243' in idn or ('KEYSIGHT' in idn and 'ELECTRONIC LOAD' in idn):
+                typ = 'Keysight EL'
+            elif 'E36233A' in idn:
+                typ = 'E36233A'
+            elif 'FIELDFOX' in idn or 'N99' in idn or 'HANDHELD SPECTRUM' in idn:
+                typ = 'FieldFox'
+            elif 'HITTITE' in idn or 'SIG GEN' in idn:
+                typ = 'Hittite'
+            elif 'ROHDE' in idn or 'SCHWARZ' in idn or 'SMA' in idn:
+                typ = 'RohdeSchwarz SMA'
+            cats.setdefault(typ, []).append(res)
+        # Assign aliases: "Keithley 0..", "FieldFox 0..", generic type+index otherwise
+        new_map = {}
+        for typ, lst in cats.items():
+            for i, res in enumerate(sorted(lst)):
+                if typ == 'Keithley':
+                    alias = f'Keithley {i}'
+                elif typ == 'FieldFox':
+                    alias = f'FieldFox {i}'
+                else:
+                    alias = f'{typ} {i}'
+                new_map[alias] = res
+        self.alias_map = new_map
+        self._apply_alias_profile_to_ui()
+
+    def _auto_select_alias_profile(self, resources: list):
+        """Auto-pick the best matching alias profile based on current resources."""
+        try:
+            profiles = self._list_alias_profiles()
+            best = None
+            best_score = -1
+            res_set = set(resources)
+            for name in profiles:
+                try:
+                    with open(self._alias_profile_path(name), 'r') as f:
+                        data = json.load(f)
+                    amap = data.get('aliases', {}) or {}
+                    vals = set(amap.values())
+                    # score: exact match gets a bonus
+                    score = len(vals & res_set)
+                    if vals and vals <= res_set and len(vals) == len(res_set):
+                        score += 1000
+                    if score > best_score:
+                        best_score = score
+                        best = (name, amap)
+                except Exception:
+                    continue
+            if best and (self.alias_profile != best[0]):
+                self.alias_profile = best[0]
+                self.alias_map = best[1]
+                self._refresh_alias_profiles()
+                self._apply_alias_profile_to_ui()
+                self.statusBar().showMessage(f"Auto-selected alias profile: {self.alias_profile}", 5000)
+        except Exception:
+            pass
+
+    def _init_settings_tab(self):
+        settings_widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(settings_widget)
+        # Profile row
+        prow = QtWidgets.QHBoxLayout()
+        self.alias_profile_combo = QtWidgets.QComboBox()
+        self.alias_profile_combo.setMinimumWidth(220)
+        self.alias_profile_name = QtWidgets.QLineEdit()
+        self.alias_profile_name.setPlaceholderText('Profile name')
+        self._refresh_alias_profiles()
+        load_btn = QtWidgets.QPushButton('Load Profile')
+        load_btn.clicked.connect(lambda: self._load_alias_profile(self.alias_profile_combo.currentText()))
+        save_btn = QtWidgets.QPushButton('Save Profile')
+        save_btn.clicked.connect(lambda: self._save_alias_profile(self.alias_profile_name.text()))
+        del_btn = QtWidgets.QPushButton('Delete Profile')
+        del_btn.clicked.connect(self._delete_alias_profile)
+        prow.addWidget(QtWidgets.QLabel('Profile:'))
+        prow.addWidget(self.alias_profile_combo)
+        prow.addWidget(QtWidgets.QLabel('Name:'))
+        prow.addWidget(self.alias_profile_name)
+        prow.addWidget(load_btn)
+        prow.addWidget(save_btn)
+        prow.addWidget(del_btn)
+        layout.addLayout(prow)
+        # Alias list and actions
+        self.alias_list = QtWidgets.QListWidget()
+        layout.addWidget(self.alias_list)
+        brow = QtWidgets.QHBoxLayout()
+        scan_btn = QtWidgets.QPushButton('Scan & Suggest Mapping')
+        def on_scan_suggest():
+            try:
+                rm = pyvisa.ResourceManager()
+                resources = list(rm.list_resources())
+            except Exception:
+                resources = []
+            self._build_aliases_from_resources(resources)
+        scan_btn.clicked.connect(on_scan_suggest)
+        brow.addWidget(scan_btn)
+        layout.addLayout(brow)
+        self.top_tabs.addTab(settings_widget, 'Settings')
 
     def disconnect_all_instruments(self):
         """Cleanly stop recordings, disconnect/clear all panels and instruments, and remove tabs.
@@ -1639,6 +1863,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     resource_val = getattr(widget.sa, 'visa_address', '')
                 except Exception:
                     resource_val = ''
+            # If an alias profile is active, reverse-map resource to alias key for portability
+            try:
+                if isinstance(resource_val, str) and self.alias_map:
+                    for alias_key, res in self.alias_map.items():
+                        if res == resource_val:
+                            resource_val = f"alias:{alias_key}"
+                            break
+            except Exception:
+                pass
             entry = {'type': tab_type, 'resource': resource_val, 'name': saved_name}
             # Save per-panel attributes
             if isinstance(widget, KeithleyPanel):
@@ -1814,6 +2047,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif any(k in name_l for k in ['rohde', 'schwarz', 'sma', 'rs ']):
                     inst_type = 'RhodeSchwarz SMA'
             resource = entry.get('resource', '')
+            # Resolve alias to actual VISA resource if needed
+            try:
+                if isinstance(resource, str) and resource.startswith('alias:'):
+                    alias_key = resource.split(':', 1)[1]
+                    # Ensure we have an alias map; if empty, try auto select based on current resources
+                    if not self.alias_map:
+                        try:
+                            rm_tmp = pyvisa.ResourceManager()
+                            self._auto_select_alias_profile(list(rm_tmp.list_resources()))
+                        except Exception:
+                            pass
+                    resource = self.alias_map.get(alias_key, '')
+            except Exception:
+                pass
             # For FieldFox: if resource not available, auto-connect to another available FieldFox
             if inst_type == 'Keysight FieldFox' and (not resource or resource not in current_resources):
                 # Attempt automatic substitution without prompting the user.
@@ -2236,10 +2483,49 @@ class MainWindow(QtWidgets.QMainWindow):
         if total_found == 0:
             self.detected_combo.addItem('No devices found', None)
 
+        # Build reverse alias map for quick lookup: resource -> alias
+        try:
+            rev_alias = {v: k for k, v in (self.alias_map or {}).items()}
+        except Exception:
+            rev_alias = {}
+
+        # Helper to map instrument type to alias base used in profiles
+        def _alias_base_for_type(_t: str) -> str:
+            t = (_t or '').strip()
+            if t == 'Keithley 2230':
+                return 'Keithley'
+            if t == 'Keysight FieldFox':
+                return 'FieldFox'
+            if t == 'Keysight EL34243A':
+                return 'Keysight EL'
+            if t == 'Keysight E36233A':
+                return 'E36233A'
+            if t == 'Hittite Sig Gen':
+                return 'Hittite'
+            if t == 'RhodeSchwarz SMA':
+                return 'RohdeSchwarz SMA'
+            return 'Unknown'
+
+        # To keep fallback aliases unique per base
+        alias_counters = {}
+
         for cat, items in categories.items():
             for res, inst_type in items:
-                label = f"{cat}: {res}"
-                self.detected_combo.addItem(label, (res, inst_type))
+                # Prefer current profile alias if available; otherwise generate a sensible alias
+                alias_name = rev_alias.get(res)
+                if not alias_name:
+                    base = _alias_base_for_type(inst_type)
+                    idx = alias_counters.get(base, 0)
+                    alias_name = f"{base} {idx}"
+                    alias_counters[base] = idx + 1
+                # Show alias in the dropdown; store resource, type, and alias
+                self.detected_combo.addItem(alias_name, (res, inst_type, alias_name))
+
+        # Auto-select an alias profile that best matches current resources
+        try:
+            self._auto_select_alias_profile(resources)
+        except Exception:
+            pass
 
         try:
             if hasattr(self, 'power_seq_builder'):
@@ -2254,9 +2540,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if not data:
             QtWidgets.QMessageBox.information(self, 'No selection', 'Select a detected device first (Scan VISA).')
             return
-        resource, inst_type = data
-        parts = resource.split('::')
-        label = parts[3] if len(parts) >= 4 else resource
+        # Unpack resource, instrument type, and the alias label we displayed
+        try:
+            resource, inst_type, alias_label = data
+        except Exception:
+            # Backward compatibility if old tuple shape
+            resource, inst_type = data
+            alias_label = resource
+        # Use the alias label for the tab name
+        label = alias_label
         self.add_instrument_panel(resource, label, inst_type)
         # refresh sequence builder after adding a tab
         try:

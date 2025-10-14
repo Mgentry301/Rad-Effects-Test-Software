@@ -2,7 +2,7 @@
   "instruments": [
     {
       "type": "Keithley 2230",
-      "resource": "USB0::0x05E6::0x2230::9201602::INSTR",
+      "resource": "alias:Keithley 3",
       "name": "k0",
       "channels": {
         "1": {
@@ -24,7 +24,7 @@
     },
     {
       "type": "RhodeSchwarz SMA",
-      "resource": "GPIB0::28::INSTR",
+      "resource": "alias:RohdeSchwarz SMA 1",
       "name": "SMA100B",
       "settings": {
         "frequency": "3",
@@ -35,7 +35,7 @@
     },
     {
       "type": "Keysight FieldFox",
-      "resource": "USB0::0x2A8D::0x5C18::MY57202149::INSTR",
+      "resource": "alias:FieldFox 0",
       "name": "FieldFox",
       "settings": {
         "center": "3",
