@@ -363,6 +363,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
                 self._spectrum_thread = None
+            # Resume panel streaming if available
+            try:
+                for i in range(getattr(self, 'tabs', QtWidgets.QTabWidget()).count()):
+                    w = self.tabs.widget(i)
+                    if isinstance(w, FieldFoxSAPanel) and hasattr(w, 'toggle_streaming'):
+                        if not w.streaming_enabled:
+                            # Re-enable streaming and start capture thread
+                            w.stream_btn.setChecked(True)
+                            w.toggle_streaming(True)
+            except Exception:
+                pass
         except Exception:
             pass
         # Registers
@@ -648,11 +659,16 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        # Clear any pending I/O on the VISA session to avoid -420 Query Unterminated
+        # Pause panel's live streaming to avoid interleaved SCPI during capture
         try:
-            inst = getattr(panel.sa, 'inst', None)
-            if inst is not None and hasattr(inst, 'clear'):
-                inst.clear()
+            if hasattr(panel, 'stop_capture_thread'):
+                panel.stop_capture_thread()
+        except Exception:
+            pass
+        # Clear status safely (avoids raw clear race)
+        try:
+            if hasattr(panel.sa, 'sync'):
+                panel.sa.sync()
         except Exception:
             pass
 
@@ -786,10 +802,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     except Exception:
                         msg = str(e)
                     if any(tok in msg for tok in ['-410', 'Query Interrupted', '-420', 'Query UNTERMINATED', 'Query Unterminated']):
+                        # Use safe sync instead of raw VISA clear to avoid -110 header errors
                         try:
-                            inst = getattr(panel.sa, 'inst', None)
-                            if inst is not None and hasattr(inst, 'clear'):
-                                inst.clear()
+                            if hasattr(panel.sa, 'sync'):
+                                panel.sa.sync()
                         except Exception:
                             pass
                         time.sleep(0.05)
@@ -1561,6 +1577,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
+        # Auto-pause FieldFox streaming when tab not active
+        try:
+            self.tabs.currentChanged.connect(self._on_tab_changed)
+        except Exception:
+            pass
         setup_layout.addWidget(self.tabs)
 
         self.statusBar().showMessage('Ready')
@@ -1710,6 +1731,34 @@ class MainWindow(QtWidgets.QMainWindow):
         # appear without the user needing to press Scan (Scan button remains as backup).
         try:
             QtCore.QTimer.singleShot(200, lambda: self.on_scan_instruments())
+        except Exception:
+            pass
+
+    def _on_tab_changed(self, index: int):
+        try:
+            # Determine which FieldFox panels exist and whether one is active
+            active_panel = None
+            try:
+                w = self.tabs.widget(index)
+                if isinstance(w, FieldFoxSAPanel):
+                    active_panel = w
+            except Exception:
+                active_panel = None
+            for i in range(self.tabs.count()):
+                panel = self.tabs.widget(i)
+                if isinstance(panel, FieldFoxSAPanel):
+                    if panel is active_panel:
+                        # Ensure streaming is on
+                        if hasattr(panel, 'stream_btn') and hasattr(panel, 'toggle_streaming'):
+                            if not panel.streaming_enabled:
+                                panel.stream_btn.setChecked(True)
+                                panel.toggle_streaming(True)
+                    else:
+                        # Pause streaming on non-active FieldFox tabs
+                        if hasattr(panel, 'stream_btn') and hasattr(panel, 'toggle_streaming'):
+                            if panel.streaming_enabled:
+                                panel.stream_btn.setChecked(False)
+                                panel.toggle_streaming(False)
         except Exception:
             pass
 

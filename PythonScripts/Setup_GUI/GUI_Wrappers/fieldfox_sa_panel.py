@@ -62,23 +62,41 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
             return
         import threading, time
         def capture_thread():
-            # Always use current unit and fetch freq axis each loop so X-axis reflects UI changes
-            freq = None
+            # Cache freq axis and refresh only when needed (length change or 5s cadence)
+            freq_cache = None
+            last_axis_len = None
+            last_axis_update = 0.0
             while self._capture_thread_running:
                 try:
-                    unit = self.unit_combo.currentText()
-                    try:
-                        freq = self.sa.get_freq_axis(unit)
-                    except Exception:
-                        freq = None
                     amplitudes = self.sa.capture_spectrum()
-                    if freq is not None and amplitudes is not None:
+                    n = None
+                    try:
+                        n = len(amplitudes)
+                    except Exception:
+                        n = None
+                    now = time.time()
+                    need_axis = (freq_cache is None) or (last_axis_len is None or (n is not None and n != last_axis_len)) or ((now - last_axis_update) > 5.0)
+                    if need_axis:
+                        try:
+                            unit = self.unit_combo.currentText()
+                        except Exception:
+                            unit = "GHz"
+                        try:
+                            freq_cache = self.sa.get_freq_axis(unit)
+                            try:
+                                last_axis_len = len(freq_cache)
+                            except Exception:
+                                last_axis_len = n
+                            last_axis_update = now
+                        except Exception:
+                            pass
+                    if freq_cache is not None and amplitudes is not None:
                         if self._spectrum_buffer.full():
                             try:
                                 self._spectrum_buffer.get_nowait()
                             except Exception:
                                 pass
-                        self._spectrum_buffer.put((freq, amplitudes))
+                        self._spectrum_buffer.put((freq_cache, amplitudes))
                 except Exception:
                     pass
                 time.sleep(1)

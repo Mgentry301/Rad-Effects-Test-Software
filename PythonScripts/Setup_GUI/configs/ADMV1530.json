@@ -1,0 +1,42 @@
+{
+  "instruments": [
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "LO",
+      "settings": {
+        "frequency": "10",
+        "freq_unit": "GHz",
+        "power": "0",
+        "output": true
+      }
+    },
+    {
+      "type": "RhodeSchwarz SMA",
+      "resource": "alias:RohdeSchwarz SMA 1",
+      "name": "IF",
+      "settings": {
+        "frequency": "5",
+        "freq_unit": "GHz",
+        "power": "0",
+        "output": true
+      }
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "alias:FieldFox 0",
+      "name": "FieldFox 0",
+      "settings": {
+        "center": "20",
+        "span": "40",
+        "start": "",
+        "stop": "",
+        "unit": "GHz"
+      }
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_logic_path": "",
+  "register_read_array": []
+}

@@ -64,21 +64,23 @@ class FieldFoxSA:
                 pass
 
     def set_center(self, center, unit="GHz"):
-        self._safe_write(f":FREQ:CENT {center} {unit}")
+        # Use fully qualified SENSE domain to avoid parser ambiguities
+        self._safe_write(f":SENS:FREQ:CENT {center} {unit}")
 
     def set_span(self, span, unit="GHz"):
-        self._safe_write(f":FREQ:SPAN {span} {unit}")
+        self._safe_write(f":SENS:FREQ:SPAN {span} {unit}")
 
     def set_start(self, start, unit="GHz"):
-        self._safe_write(f":FREQ:STAR {start} {unit}")
+        self._safe_write(f":SENS:FREQ:STAR {start} {unit}")
 
     def set_stop(self, stop, unit="GHz"):
-        self._safe_write(f":FREQ:STOP {stop} {unit}")
+        self._safe_write(f":SENS:FREQ:STOP {stop} {unit}")
 
     def get_freq_axis(self, unit="GHz"):
-        f_start_hz = float(self._safe_query(":FREQ:STAR?", timeout_ms=1200))
-        f_stop_hz = float(self._safe_query(":FREQ:STOP?", timeout_ms=1200))
-        trace_len = int(self._safe_query(":SWE:POIN?", timeout_ms=1200))
+        # Query using SENSE domain; fewer -110 header errors on some FW revs
+        f_start_hz = float(self._safe_query(":SENS:FREQ:STAR?", timeout_ms=1200))
+        f_stop_hz = float(self._safe_query(":SENS:FREQ:STOP?", timeout_ms=1200))
+        trace_len = int(self._safe_query(":SENS:SWE:POIN?", timeout_ms=1200))
         factor = 1e9 if unit == "GHz" else 1e6 if unit == "MHz" else 1.0
         freq = np.linspace(f_start_hz, f_stop_hz, trace_len) / factor
         return freq
