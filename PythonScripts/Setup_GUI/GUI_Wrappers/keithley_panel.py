@@ -1,4 +1,6 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
+import os
+import json
 from Instruments.keithley2230 import Keithley2230
 from functools import partial
 
@@ -26,6 +28,8 @@ class KeithleyPanel(QtWidgets.QWidget):
         self.resource = resource
         self.inst = None
         self.latest_currents = {1: None, 2: None, 3: None}
+        # Cache of baseline voltages from the loaded JSON config, per channel
+        self._baseline_voltages = None
         self._build_ui()
 
     def _build_ui(self):
@@ -55,12 +59,16 @@ class KeithleyPanel(QtWidgets.QWidget):
         ch_group = QtWidgets.QGroupBox('Channel Setpoints')
         ch_layout = QtWidgets.QGridLayout()
         ch_layout.addWidget(QtWidgets.QLabel('Chan'), 0, 0)
-        ch_layout.addWidget(QtWidgets.QLabel('V (V)'), 0, 1)
-        ch_layout.addWidget(QtWidgets.QLabel('I (A)'), 0, 2)
-        ch_layout.addWidget(QtWidgets.QLabel('Action'), 0, 3)
-        ch_layout.addWidget(QtWidgets.QLabel('Output'), 0, 4)
+        ch_layout.addWidget(QtWidgets.QLabel('Name'), 0, 1)
+        ch_layout.addWidget(QtWidgets.QLabel('V (V)'), 0, 2)
+        ch_layout.addWidget(QtWidgets.QLabel('I (A)'), 0, 3)
+        ch_layout.addWidget(QtWidgets.QLabel('Action'), 0, 4)
+        ch_layout.addWidget(QtWidgets.QLabel('Output'), 0, 5)
+        self.ch_name_edits = {}
         for i in (1, 2, 3):
             ch_layout.addWidget(QtWidgets.QLabel(str(i)), i, 0)
+            name_edit = QtWidgets.QLineEdit(f'CH{i}')
+            name_edit.setMaximumWidth(120)
             v_edit = QtWidgets.QLineEdit('0')
             i_edit = QtWidgets.QLineEdit('0.03')
             set_btn = QtWidgets.QPushButton('Set')
@@ -69,13 +77,15 @@ class KeithleyPanel(QtWidgets.QWidget):
             output_btn.setCheckable(True)
             output_btn.setChecked(False)
             output_btn.clicked.connect(partial(self.on_toggle_channel_output, i))
+            self.ch_name_edits[i] = name_edit
             self.vol_edits[i] = v_edit
             self.iam_edits[i] = i_edit
             self.output_btns[i] = output_btn
-            ch_layout.addWidget(v_edit, i, 1)
-            ch_layout.addWidget(i_edit, i, 2)
-            ch_layout.addWidget(set_btn, i, 3)
-            ch_layout.addWidget(output_btn, i, 4)
+            ch_layout.addWidget(name_edit, i, 1)
+            ch_layout.addWidget(v_edit, i, 2)
+            ch_layout.addWidget(i_edit, i, 3)
+            ch_layout.addWidget(set_btn, i, 4)
+            ch_layout.addWidget(output_btn, i, 5)
         ch_group.setLayout(ch_layout)
         layout.addWidget(ch_group)
 
@@ -98,6 +108,30 @@ class KeithleyPanel(QtWidgets.QWidget):
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
 
+        # Voltage offset utilities
+        offset_row = QtWidgets.QHBoxLayout()
+        offset_row.addWidget(QtWidgets.QLabel('Offset %:'))
+        self.offset_percent_edit = QtWidgets.QLineEdit('10')
+        self.offset_percent_edit.setMaximumWidth(80)
+        # allow negative and decimal percentages
+        try:
+            validator = QtGui.QDoubleValidator(-1000.0, 1000.0, 3, self)
+            validator.setNotation(QtGui.QDoubleValidator.StandardNotation)
+            self.offset_percent_edit.setValidator(validator)
+        except Exception:
+            pass
+        offset_row.addWidget(self.offset_percent_edit)
+        self.apply_offset_btn = QtWidgets.QPushButton('Apply Offset')
+        self.apply_offset_btn.setToolTip('Multiply each channel voltage by (1 + percent/100). Default is +10%.')
+        self.apply_offset_btn.clicked.connect(self.on_apply_offset)
+        offset_row.addWidget(self.apply_offset_btn)
+        # Reset to baseline button
+        self.reset_baseline_btn = QtWidgets.QPushButton('Reset to Baseline')
+        self.reset_baseline_btn.setToolTip('Restore channel voltages to baseline from loaded config (non-compounding).')
+        self.reset_baseline_btn.clicked.connect(self.on_reset_to_baseline)
+        offset_row.addWidget(self.reset_baseline_btn)
+        layout.addLayout(offset_row)
+
         # Bottom controls
         bottom = QtWidgets.QHBoxLayout()
         self.read_btn = QtWidgets.QPushButton('Read Now')
@@ -112,6 +146,161 @@ class KeithleyPanel(QtWidgets.QWidget):
 
         self.status_label = QtWidgets.QLabel('')
         layout.addWidget(self.status_label)
+
+    def on_apply_offset(self):
+        """Apply a percentage offset to channel voltage setpoints based on JSON baseline.
+        Uses baseline voltages from the last loaded config (if available) so offsets are
+        not compounded from current UI values. Falls back to current UI if no baseline.
+        """
+        # Parse percentage
+        try:
+            pct = float(self.offset_percent_edit.text())
+        except Exception:
+            self.status_label.setText('Invalid offset percentage')
+            return
+
+        factor = 1.0 + (pct / 100.0)
+        # Ensure baseline is available
+        if self._baseline_voltages is None:
+            self._load_baseline_from_config()
+        # Fallback to current UI as baseline if none found
+        if self._baseline_voltages is None:
+            self._baseline_voltages = {}
+            for ch in (1, 2, 3):
+                try:
+                    self._baseline_voltages[ch] = float(self.vol_edits[ch].text())
+                except Exception:
+                    self._baseline_voltages[ch] = 0.0
+
+        new_values = {}
+        for ch in (1, 2, 3):
+            base_v = float(self._baseline_voltages.get(ch, 0.0))
+            new_v = base_v * factor
+            new_values[ch] = new_v
+            # Update the UI field
+            try:
+                self.vol_edits[ch].setText(f'{new_v:.6f}')
+            except Exception:
+                pass
+        # If connected, program the new voltages
+        if self.inst is not None:
+            for ch, new_v in new_values.items():
+                try:
+                    self.inst.set_voltage(ch, new_v)
+                except Exception:
+                    # keep going for other channels
+                    pass
+            conn_note = ''
+        else:
+            conn_note = ' (setpoints only; not connected)'
+
+        sign = '+' if pct >= 0 else ''
+        self.status_label.setText(f'Applied {sign}{pct:.2f}% voltage offset{conn_note}')
+
+    def on_reset_to_baseline(self):
+        """Reset UI and instrument voltages to the baseline values from config.
+        If baseline isn't loaded yet, attempts to load it. If still not found,
+        leaves UI as-is and informs the user.
+        """
+        if self._baseline_voltages is None:
+            self._load_baseline_from_config()
+        if self._baseline_voltages is None:
+            self.status_label.setText('No baseline found (load a config first)')
+            return
+        # Update UI fields
+        for ch in (1, 2, 3):
+            try:
+                v = float(self._baseline_voltages.get(ch, 0.0))
+            except Exception:
+                v = 0.0
+            try:
+                self.vol_edits[ch].setText(f'{v:.6f}')
+            except Exception:
+                pass
+        # Program instrument if connected
+        if self.inst is not None:
+            for ch in (1, 2, 3):
+                try:
+                    v = float(self._baseline_voltages.get(ch, 0.0))
+                    self.inst.set_voltage(ch, v)
+                except Exception:
+                    pass
+            self.status_label.setText('Voltages reset to baseline')
+        else:
+            self.status_label.setText('Voltages reset to baseline (not connected)')
+
+    def _load_baseline_from_config(self):
+        """Load baseline voltages from last loaded config JSON in MainWindow.
+        Attempts to match by instrument name first, then resource. Sets _baseline_voltages.
+        """
+        # Get the last loaded config path from the main window
+        try:
+            main_win = self.window()
+        except Exception:
+            main_win = None
+        cfg_path = None
+        try:
+            cfg_path = getattr(main_win, '_last_loaded_config_path', None)
+        except Exception:
+            cfg_path = None
+        if not cfg_path or not isinstance(cfg_path, str) or not os.path.exists(cfg_path):
+            return
+        # Identify this instrument
+        try:
+            name_text = self.name_edit.text().strip()
+        except Exception:
+            name_text = None
+        try:
+            res_text = self.resource_edit.text().strip()
+        except Exception:
+            res_text = None
+
+        try:
+            with open(cfg_path, 'r') as f:
+                content = json.load(f)
+        except Exception:
+            return
+
+        instruments = []
+        if isinstance(content, dict):
+            instruments = content.get('instruments', []) or []
+        elif isinstance(content, list):
+            instruments = content
+
+        # Find matching Keithley instrument
+        k_items = [it for it in instruments if isinstance(it, dict) and str(it.get('type', '')).strip().lower() == 'keithley 2230']
+        chosen = None
+        if name_text:
+            for it in k_items:
+                try:
+                    if str(it.get('name', '')).strip().lower() == name_text.lower():
+                        chosen = it
+                        break
+                except Exception:
+                    pass
+        if chosen is None and res_text:
+            for it in k_items:
+                try:
+                    if str(it.get('resource', '')).strip() == res_text:
+                        chosen = it
+                        break
+                except Exception:
+                    pass
+        if chosen is None and len(k_items) == 1:
+            chosen = k_items[0]
+        if chosen is None:
+            return
+
+        channels = chosen.get('channels', {}) or {}
+        baseline = {}
+        for key in ('1', '2', '3'):
+            try:
+                v = channels.get(key, {}).get('voltage', 0.0)
+                baseline[int(key)] = float(v)
+            except Exception:
+                baseline[int(key)] = 0.0
+            # Accept baseline even if zeros; some configs may set 0V intentionally
+            self._baseline_voltages = baseline
 
     def close(self):
         try:

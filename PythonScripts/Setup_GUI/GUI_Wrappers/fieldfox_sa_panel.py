@@ -142,6 +142,15 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         self.stream_btn.toggled.connect(self.toggle_streaming)
         btn_row.addWidget(self.stream_btn)
         layout.addLayout(btn_row)
+        # Peak search controls
+        peak_row = QtWidgets.QHBoxLayout()
+        self.peak_btn = QtWidgets.QPushButton("Peak Search")
+        self.peak_btn.setToolTip("Find the highest point in the latest spectrum and show its frequency and level")
+        self.peak_btn.clicked.connect(self.on_peak_search)
+        peak_row.addWidget(self.peak_btn)
+        self.peak_label = QtWidgets.QLabel("Peak: --")
+        peak_row.addWidget(self.peak_label, 1)
+        layout.addLayout(peak_row)
         self.apply_btn = QtWidgets.QPushButton("Apply Settings")
         self.apply_btn.clicked.connect(self.apply_settings)
         layout.addWidget(self.apply_btn)
@@ -154,6 +163,43 @@ class FieldFoxSAPanel(QtWidgets.QWidget):
         layout.addWidget(self.canvas)
         # Disable settings until connected
         self.set_settings_enabled(False)
+
+    def on_peak_search(self):
+        """Find the highest amplitude in the latest spectrum and display freq and level."""
+        freq = self.freq
+        amps = self.amplitudes
+        # If no data yet, try to consume one sample from buffer
+        if (freq is None or amps is None):
+            try:
+                if not self._spectrum_buffer.empty():
+                    freq, amps = self._spectrum_buffer.get_nowait()
+                    self.freq, self.amplitudes = freq, amps
+            except Exception:
+                pass
+        try:
+            if freq is None or amps is None:
+                raise ValueError('No spectrum data available')
+            a = np.asarray(amps, dtype=float)
+            f = np.asarray(freq, dtype=float)
+            if a.size == 0 or f.size == 0:
+                raise ValueError('Empty spectrum data')
+            idx = int(np.nanargmax(a))
+            if idx >= f.size:
+                idx = f.size - 1
+            peak_amp = float(a[idx])
+            peak_freq = float(f[idx])
+        except Exception as e:
+            self.status_label.setText(f"Peak Search: {e}")
+            self.peak_label.setText("Peak: --")
+            return
+        unit = self.unit_combo.currentText()
+        self.peak_label.setText(f"Peak: {peak_freq:.6f} {unit}, {peak_amp:.2f} dBm")
+        # Optional: mark the peak on the plot
+        try:
+            if hasattr(self, 'canvas') and hasattr(self.canvas, 'set_peak'):
+                self.canvas.set_peak(peak_freq, peak_amp)
+        except Exception:
+            pass
 
     def toggle_streaming(self, checked: bool):
         """Toggle live streaming/plotting of spectrum."""
@@ -222,6 +268,7 @@ class SpectrumCanvas(QtWidgets.QWidget):
         self.fig, self.ax = plt.subplots(figsize=(8, 4))
         self.canvas = None
         self.line = None
+        self.peak_marker = None
         self.setMinimumHeight(300)
         self.setMinimumWidth(600)
         self.ax.set_xlabel("Frequency")
@@ -260,6 +307,18 @@ class SpectrumCanvas(QtWidgets.QWidget):
         except Exception:
             pass
         self.canvas.draw()
+
+    def set_peak(self, fx, amp):
+        """Render or update a small marker at the peak location."""
+        try:
+            if self.peak_marker is None:
+                self.peak_marker, = self.ax.plot([fx], [amp], marker='o', ms=6, mfc='crimson', mec='white', lw=0, zorder=5)
+            else:
+                self.peak_marker.set_xdata([fx])
+                self.peak_marker.set_ydata([amp])
+            self.canvas.draw()
+        except Exception:
+            pass
 
 # Matplotlib Qt backend import
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg

@@ -18,7 +18,7 @@ import tempfile
 import datetime
 import time
 from typing import List, Tuple
-
+ 
 from PyQt5 import QtWidgets, QtCore
 import pyvisa
 
@@ -126,6 +126,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 excel_path += '.xlsx'
             if not excel_path:
                 return
+            # Remember path for cleanup (e.g., removing any backups on stop)
+            try:
+                self._last_excel_path = excel_path
+            except Exception:
+                pass
             # Create a global excel write lock once per session
             try:
                 import threading
@@ -198,25 +203,29 @@ class MainWindow(QtWidgets.QMainWindow):
                                             alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
                                         except Exception:
                                             alias_name = getattr(p, 'resource', 'Supply')
+                                        # Determine channel names if available
                                         if p.__class__.__name__.startswith('Keithley'):
                                             ch_count = 3
+                                            ch_names = []
+                                            try:
+                                                ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1,2,3)]
+                                            except Exception:
+                                                ch_names = [f'CH{i}' for i in (1,2,3)]
                                         else:
                                             ch_count = 2
-                                        for ch in range(1, ch_count+1):
-                                            header.append(f'{alias_name}_CH{ch}_V')
-                                        for ch in range(1, ch_count+1):
-                                            header.append(f'{alias_name}_CH{ch}_I')
+                                            ch_names = [f'CH{i}' for i in (1,2)]
+                                        for i in range(1, ch_count+1):
+                                            nm = ch_names[i-1] if i-1 < len(ch_names) else f'CH{i}'
+                                            header.append(f'{alias_name}_{nm}_V')
+                                        for i in range(1, ch_count+1):
+                                            nm = ch_names[i-1] if i-1 < len(ch_names) else f'CH{i}'
+                                            header.append(f'{alias_name}_{nm}_I')
                                     ws.append(header)
                                 except Exception:
                                     pass
                             for row in self.buffer:
                                 ws.append(row)
-                            try:
-                                bak = self.excel_path + '.bak'
-                                if not os.path.exists(bak):
-                                    wb.save(bak)
-                            except Exception:
-                                pass
+                            # No .bak backup to avoid extra files
                             wb.save(self.excel_path)
                             self.buffer.clear()
                         finally:
@@ -512,12 +521,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     pass
                 for row in buffer:
                     ws.append(row)
-                try:
-                    bak = excel_path + '.bak'
-                    if not os.path.exists(bak):
-                        wb.save(bak)
-                except Exception:
-                    pass
+                # No .bak backup to avoid extra files
                 wb.save(excel_path)
                 try:
                     self._log(f'Register flush wrote {len(buffer)} rows; sheet rows now {ws.max_row-1}')
@@ -731,12 +735,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 for row in buffer:
                     ws.append(row)
-                try:
-                    bak = excel_path + '.bak'
-                    if not os.path.exists(bak):
-                        wb.save(bak)
-                except Exception:
-                    pass
+                # No .bak backup to avoid extra files
                 wb.save(excel_path)
                 try:
                     self._log(f'Spectrum flush wrote {len(buffer)} rows; sheet rows now {ws.max_row-1}')
@@ -2173,7 +2172,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     entry['channels'][ch] = {
                         'voltage': widget.vol_edits[ch].text(),
                         'current': widget.iam_edits[ch].text(),
-                        'output': widget.master_out_btn.isChecked()
+                        'output': widget.master_out_btn.isChecked(),
+                        'name': (widget.ch_name_edits[ch].text() if hasattr(widget, 'ch_name_edits') and widget.ch_name_edits.get(ch) else f'CH{ch}')
                     }
             elif isinstance(widget, KeysightELPanel):
                 entry['channels'] = {}
@@ -2206,7 +2206,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     entry['channels'][ch] = {
                         'voltage': widget.voltage_edit.text(),
                         'current': widget.current_edit.text(),
-                        'output': widget.onoff_btn.isChecked()
+                        'output': widget.onoff_btn.isChecked(),
+                        'name': f'CH{ch}'
                     }
             elif isinstance(widget, HittiteSigGenPanel):
                 # Save frequency (value + unit if separated) and power + output state if available
@@ -2366,7 +2367,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     resource = self.alias_map.get(alias_key, '')
             except Exception:
                 pass
-            # For FieldFox: if resource not available, auto-connect to another available FieldFox
+            # If resource is missing (e.g., alias not mapped), try sensible auto-substitution for known types
+            if (not resource) and inst_type in ('Hittite Sig Gen', 'RhodeSchwarz SMA', 'Keysight E36233A', 'Keysight EL34243A', 'Keithley 2230'):
+                try:
+                    candidates = self._find_replacement_candidates(resource, inst_type, rm_for_load)
+                except Exception:
+                    candidates = []
+                if candidates:
+                    resource = candidates[0][1]
+                    self.statusBar().showMessage(f'{inst_type} resource missing; auto-connected to: {resource}', 5000)
+                else:
+                    # leave empty, downstream code may prompt or skip depending on type
+                    pass
+            # For FieldFox: if resource not available or not detected, auto-connect to another available FieldFox
             if inst_type == 'Keysight FieldFox' and (not resource or resource not in current_resources):
                 # Attempt automatic substitution without prompting the user.
                 try:
@@ -2462,11 +2475,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 name_val = entry.get('name') if isinstance(entry, dict) else None
                 if name_val and hasattr(panel, 'name_edit'):
                     panel.name_edit.setText(name_val)
-                # Auto-connect panel after loading
+                # Auto-connect panel after loading, but defer for FieldFox and Hittite so their
+                # specialized blocks can manage connect + apply timing reliably.
                 if hasattr(panel, 'on_connect'):
                     try:
-                        # For FieldFox, defer connection to the FieldFox settings block below
-                        if inst_type != 'Keysight FieldFox':
+                        if inst_type not in ('Keysight FieldFox', 'Hittite Sig Gen'):
                             panel.on_connect()
                     except Exception:
                         pass
@@ -2476,6 +2489,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         ch_cfg = entry.get('channels', {}).get(str(ch)) or entry.get('channels', {}).get(ch)
                         if ch_cfg:
                             try:
+                                # Restore per-channel name if UI supports it
+                                if hasattr(panel, 'ch_name_edits') and panel.ch_name_edits.get(ch):
+                                    nm = ch_cfg.get('name') if isinstance(ch_cfg, dict) else None
+                                    if nm is not None:
+                                        panel.ch_name_edits[ch].setText(str(nm))
                                 panel.vol_edits[ch].setText(str(ch_cfg.get('voltage', '0')))
                                 panel.iam_edits[ch].setText(str(ch_cfg.get('current', '0.03')))
                                 panel.master_out_btn.setChecked(bool(ch_cfg.get('output', False)))
@@ -2599,6 +2617,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         freq_unit = settings.get('freq_unit')
                         power = settings.get('power')
                         output_state = settings.get('output', False)
+                        # Ensure panel auto-applies UI settings after a connect
+                        try:
+                            if hasattr(panel, 'auto_apply_on_connect'):
+                                panel.auto_apply_on_connect = False  # we'll explicitly connect and then run our apply routine
+                        except Exception:
+                            pass
                         if freq is not None and hasattr(panel, 'freq_edit'):
                             panel.freq_edit.setText(str(freq))
                         if freq_unit and hasattr(panel, 'freq_unit_combo'):
@@ -2610,28 +2634,80 @@ class MainWindow(QtWidgets.QMainWindow):
                         if hasattr(panel, 'output_btn'):
                             panel.output_btn.setChecked(bool(output_state))
                             panel.output_btn.setText('Output On' if output_state else 'Output Off')
-                        def apply_hittite_hw():
-                            if getattr(panel, 'dev', None):
+                        # Connect immediately so the user doesn't have to click; apply will be scheduled below
+                        try:
+                            if hasattr(panel, 'on_connect'):
+                                panel.on_connect()
+                        except Exception:
+                            pass
+                        # Ensure connection and apply settings; retry a few times if needed
+                        def apply_hittite_hw(attempt_idx: int = 0):
+                            try:
+                                # Ensure connected
+                                if getattr(panel, 'dev', None) is None:
+                                    try:
+                                        if hasattr(panel, 'on_connect'):
+                                            panel.on_connect()
+                                    except Exception:
+                                        pass
+                                    if attempt_idx < 8:
+                                        QtCore.QTimer.singleShot(600, lambda: apply_hittite_hw(attempt_idx + 1))
+                                    return
+                                # Post-connect settle delay on first configure
+                                if attempt_idx == 0:
+                                    QtCore.QTimer.singleShot(500, lambda: apply_hittite_hw(attempt_idx + 1))
+                                    return
+                                # Convert frequency with unit
                                 try:
-                                    # Prefer panel helper methods if available
-                                    if hasattr(panel, 'on_set_frequency') and hasattr(panel, 'freq_edit'):
+                                    freq_val = float(panel.freq_edit.text())
+                                except Exception:
+                                    freq_val = None
+                                try:
+                                    unit = panel.freq_unit_combo.currentText()
+                                except Exception:
+                                    unit = 'GHz'
+                                mult = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}.get(unit, 1)
+                                # Apply frequency
+                                if freq_val is not None:
+                                    try:
+                                        panel.dev.set_frequency(freq_val * mult)
+                                    except Exception:
                                         try:
-                                            panel.on_set_frequency()
+                                            # Secondary try via helper
+                                            if hasattr(panel, 'on_set_frequency'):
+                                                panel.on_set_frequency()
                                         except Exception:
                                             pass
-                                    if power is not None and hasattr(panel, 'on_set_power'):
+                                # Apply power
+                                if power is not None:
+                                    try:
+                                        panel.dev.set_power(float(power))
+                                    except Exception:
                                         try:
-                                            panel.on_set_power()
+                                            if hasattr(panel, 'on_set_power'):
+                                                panel.on_set_power()
                                         except Exception:
                                             pass
-                                    if hasattr(panel, 'dev') and hasattr(panel, 'output_btn'):
-                                        try:
-                                            panel.dev.set_output(bool(output_state))
-                                        except Exception:
-                                            pass
+                                # Apply output last
+                                try:
+                                    panel.dev.set_output(bool(output_state))
                                 except Exception:
                                     pass
-                        QtCore.QTimer.singleShot(1500, apply_hittite_hw)
+                                # Status hint
+                                try:
+                                    panel.status_label.setText('Applied JSON freq/power/output')
+                                except Exception:
+                                    pass
+                            except Exception:
+                                if attempt_idx < 8:
+                                    QtCore.QTimer.singleShot(600, lambda: apply_hittite_hw(attempt_idx + 1))
+                        QtCore.QTimer.singleShot(400, apply_hittite_hw)
+                        # If already connected for any reason, also schedule a direct UI->HW push as a fallback
+                        try:
+                            if getattr(panel, 'dev', None) is not None and hasattr(panel, '_apply_ui_to_hw'):
+                                QtCore.QTimer.singleShot(800, panel._apply_ui_to_hw)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 elif inst_type == 'Keysight FieldFox':

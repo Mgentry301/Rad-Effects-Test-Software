@@ -25,12 +25,14 @@ class HittiteSigGenPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self.resource = resource
         self.dev = None  # HittiteSigGen instance
+        # When True, apply current UI freq/power to device shortly after a successful connect
+        self.auto_apply_on_connect = True
         self._build_ui()
 
     def _build_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
 
-            # Connection row
+    # Connection row
         row = QtWidgets.QHBoxLayout()
         self.resource_edit = QtWidgets.QLineEdit(self.resource)
         self.connect_btn = QtWidgets.QPushButton('Connect')
@@ -127,6 +129,9 @@ class HittiteSigGenPanel(QtWidgets.QWidget):
             idn = dev.get_identification()
             self.dev = dev
             self.status_label.setText(f'Connected: {idn.strip()}')
+            # After connect, optionally push current UI settings to hardware so logs show actions
+            if self.auto_apply_on_connect:
+                QtCore.QTimer.singleShot(300, self._apply_ui_to_hw)
         except Exception as e:
             self.status_label.setText(f'Connect failed: {e}')
 
@@ -176,3 +181,22 @@ class HittiteSigGenPanel(QtWidgets.QWidget):
             self.output_btn.setStyleSheet('background-color: #4CAF50; color: white;')
         else:
             self.output_btn.setStyleSheet('background-color: #F44336; color: white;')
+
+    def _apply_ui_to_hw(self):
+        """Apply current UI frequency/power to the connected device (no output toggle)."""
+        if self.dev is None:
+            return
+        # Frequency
+        try:
+            freq_val = float(self.freq_edit.text())
+            unit = self.freq_unit_combo.currentText()
+            mult = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}.get(unit, 1)
+            self.dev.set_frequency(freq_val * mult)
+        except Exception:
+            pass
+        # Power
+        try:
+            power = float(self.pow_edit.text())
+            self.dev.set_power(power)
+        except Exception:
+            pass
