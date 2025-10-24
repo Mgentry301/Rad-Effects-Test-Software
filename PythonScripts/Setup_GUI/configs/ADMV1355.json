@@ -71,20 +71,5 @@
   ],
   "use_sequence": true,
   "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV1355.py",
-  "register_read_array": [
-    0,
-    1,
-    10,
-    18,
-    19,
-    20,
-    32,
-    48,
-    49,
-    50,
-    51,
-    52,
-    53,
-    54
-  ]
+  "register_read_array": [0,10,318,514,514,520,650,651,672,673,1538,2048,2049,2050,2052,2053,2054,2058,2060]
 }
