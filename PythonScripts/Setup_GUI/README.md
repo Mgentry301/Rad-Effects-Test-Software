@@ -1,22 +1,44 @@
-Keithley 2230 GUI
+# Rad Effects Setup GUI
 
-This folder contains a small PyQt GUI and a pyvisa wrapper to control a Keithley 2230-30-1 power supply.
+This GUI controls multiple bench instruments and records data. Use this guide to install dependencies and create a Desktop icon that launches without a console window.
 
-Files
-- keithley2230.py: minimal pyvisa wrapper for the supply
-- keithley_gui.py: GUI application using PyQt5 + pyqtgraph
-- requirements.txt: Python dependencies
+## Prerequisites
+- Windows with Python 3.10+ (Python 3.13 supported).
+- VISA runtime/driver (NI-VISA or Keysight IO Libraries) so instruments enumerate.
+- Optional: Analog Devices ACE for register recording features.
 
-Quick start
-1. Create and activate a Python environment (3.8+ recommended).
-2. Install dependencies:
+## Install dependencies
+From the repo root:
 
-   pip install -r requirements.txt
+```powershell
+pip install -r requirements.txt
+```
 
-3. Run the GUI:
+If you use a virtual environment, activate it first.
 
-   python keithley_gui.py
+## Create the Desktop icon (no console window)
+Use the provided PowerShell script to create a Desktop shortcut that targets pythonw.exe directly.
 
-Notes
-- Update the VISA resource string in `keithley_gui.py` if your instrument enumerates differently. The default uses the serial number 9200976 you provided.
-- Commands used are basic and may need small changes depending on your Keithley firmware. If a command fails, inspect the exception and consult the instrument manual.
+Run from repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "PythonScripts/Setup_GUI/Support_Scrips/create_desktop_shortcut.ps1"
+```
+
+This creates "Rad Effects Setup GUI.lnk" on your Desktop. Double‑click it to launch the GUI without a terminal window.
+
+### Notes
+- If Python is installed in a non-default location, the script attempts to find `pythonw.exe` on PATH; otherwise edit `$pythonw` inside the script.
+- If you move/rename the repo, re-run the script to update the shortcut paths.
+- If you had an older pinned shortcut, unpin it to avoid launching via the deprecated .bat.
+
+## Manual shortcut (optional)
+- Target: `C:\Path\To\Python\pythonw.exe`
+- Arguments: `"C:\Git\Rad-Effects-Test-Software\PythonScripts\Setup_GUI\setup_gui.py"`
+- Start in: `C:\Git\Rad-Effects-Test-Software`
+- Icon: `C:\Path\To\Python\pythonw.exe`
+
+## Troubleshooting
+- Register recording requires ACE remoting to be available.
+- If VISA scan shows no devices, verify your VISA runtime and connections.
+- Long recordings: the app uses a background Excel writer to avoid timing gaps.

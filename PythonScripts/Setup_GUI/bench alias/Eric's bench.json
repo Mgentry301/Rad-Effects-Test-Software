@@ -3,7 +3,7 @@
   "aliases": {
     "FieldFox 0": "USB0::0x2A8D::0x5C18::MY57202149::INSTR",
     "Keithley 0": "USB0::0x05E6::0x2230::9201602::INSTR",
-    "Keithley 1": "USB0::0x05E6::0x2230::9030930::INSTR",    
+    "Keithley 1": "USB0::0x05E6::0x2230::9030930::INSTR",
     "Keithley 2": "USB0::0x05E6::0x2230::9201548::INSTR",
     "Keithley 3": "USB0::0x05E6::0x2230::9100252::INSTR",
     "Unknown 0": "ASRL1::INSTR",
@@ -11,6 +11,7 @@
     "RohdeSchwarz SMA 0": "GPIB0::27::INSTR",
     "RohdeSchwarz SMA 1": "GPIB0::28::INSTR",
     "RohdeSchwarz SMA 2": "GPIB0::7::INSTR",
-    "Hittite 0": "GPIB0::16::INSTR"
+    "Hittite 0": "GPIB0::16::INSTR",
+    "Hittite 1": "GPIB0::12::INSTR"
   }
 }

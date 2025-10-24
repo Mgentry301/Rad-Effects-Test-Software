@@ -22,13 +22,13 @@ from typing import List, Tuple
 from PyQt5 import QtWidgets, QtCore
 import pyvisa
 
-from GUI_Wrappers.power_sequence_builder import PowerSequenceBuilder
-from GUI_Wrappers.keithley_panel import KeithleyPanel
-from GUI_Wrappers.keysightEL_panel import KeysightELPanel
-from GUI_Wrappers.keysight_e36233a_panel import KeysightE36233APanel
-from GUI_Wrappers.hittite_siggen_panel import HittiteSigGenPanel
-from GUI_Wrappers.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
-from GUI_Wrappers.fieldfox_sa_panel import FieldFoxSAPanel
+from Support_Scrips.power_sequence_builder import PowerSequenceBuilder
+from Support_Scrips.Front_Panels.keithley_panel import KeithleyPanel
+from Support_Scrips.Front_Panels.keysightEL_panel import KeysightELPanel
+from Support_Scrips.Front_Panels.keysight_e36233a_panel import KeysightE36233APanel
+from Support_Scrips.Front_Panels.hittite_siggen_panel import HittiteSigGenPanel
+from Support_Scrips.Front_Panels.rhodeschwarz_sma_panel import RhodeSchwarzSMAPanel
+from Support_Scrips.Front_Panels.fieldfox_sa_panel import FieldFoxSAPanel
 
 class MainWindow(QtWidgets.QMainWindow):
     # Thread-safe log signal
@@ -120,7 +120,20 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
     def on_record_clicked(self):
         """Unified record button: start/stop recording for selected metrics."""
+        # If not primed yet, behave like legacy flow: ask path and start now
         if self.record_btn.isChecked():
+            if getattr(self, '_record_primed', False):
+                # Fire start for already-primed threads
+                try:
+                    if getattr(self, '_record_start_event', None):
+                        self._record_start_event.set()
+                    # Nudge sync time to now for any loops using _record_sync_start
+                    self._record_sync_start = time.time()
+                except Exception:
+                    pass
+                self.record_btn.setText('Stop Recording')
+                self.statusBar().showMessage('Recording started', 3000)
+                return
             excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Reads', '', 'Excel Files (*.xlsx)')[0]
             if excel_path and not excel_path.lower().endswith('.xlsx'):
                 excel_path += '.xlsx'
@@ -138,6 +151,26 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._excel_lock = threading.Lock()
             except Exception:
                 self._excel_lock = None
+            # Reset shared workbook state for this recording session
+            try:
+                self._excel_wb = None
+                self._excel_ws_cache = {}
+                # Working/final paths + markers
+                self._excel_final_path = excel_path
+                self._excel_working_path = excel_path + '.working.xlsx'
+                self._excel_marker_path = excel_path + '.saving'
+                self._excel_wb_path = self._excel_working_path
+                self._excel_last_save = 0.0
+                self._excel_last_snapshot = 0.0
+                self._excel_saving = False
+            except Exception:
+                pass
+            # Create saving marker
+            try:
+                with open(self._excel_marker_path, 'w') as f:
+                    f.write('saving')
+            except Exception:
+                pass
             # Establish a synchronized start time a short interval in the future so all recorders align
             try:
                 self._record_sync_start = time.time() + 1.5  # 1.5s lead time
@@ -158,121 +191,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not panels:
                     self.statusBar().showMessage('No supply panels to record', 4000)
                     # Do not return; continue to other selected metrics (e.g., Spectrum)
-                from supply_recorder import SupplyRecorder
-                def update_supply_read_speed(sps):
-                    self.supply_read_speed_label.setText(f'Supply Sample Rate: {sps:.2f} samples/sec')
-                self_parent = self  # for closure access inside recorder class
-                class PatchedSupplyRecorder(SupplyRecorder):
-                    def _flush_buffer(self):
-                        if not self.buffer:
-                            return
-                        from openpyxl import Workbook, load_workbook
-                        import os, time
-                        # Acquire global lock if available
-                        lock = getattr(self_parent, '_excel_lock', None)
-                        if lock:
-                            acquired = lock.acquire(timeout=5)
-                        else:
-                            acquired = True
-                        if not acquired:
-                            return  # skip this flush; preserve buffer
-                        try:
-                            header_needed = False
-                            if os.path.exists(self.excel_path):
-                                try:
-                                    wb = load_workbook(self.excel_path)
-                                except Exception:
-                                    # Skip flush on load failure to avoid destructive overwrite
-                                    return
-                                if self.sheet_name in wb.sheetnames:
-                                    ws = wb[self.sheet_name]
-                                else:
-                                    ws = wb.create_sheet(self.sheet_name)
-                                    header_needed = True
-                            else:
-                                wb = Workbook()
-                                ws = wb.active
-                                ws.title = self.sheet_name
-                                header_needed = True
-                            if header_needed:
-                                try:
-                                    header = ['timestamp']
-                                    for p in panels:
-                                        try:
-                                            tab_idx = self_parent.tabs.indexOf(p)
-                                            alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
-                                        except Exception:
-                                            alias_name = getattr(p, 'resource', 'Supply')
-                                        # Determine channel names if available
-                                        if p.__class__.__name__.startswith('Keithley'):
-                                            ch_count = 3
-                                            ch_names = []
-                                            try:
-                                                ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1,2,3)]
-                                            except Exception:
-                                                ch_names = [f'CH{i}' for i in (1,2,3)]
-                                        else:
-                                            ch_count = 2
-                                            ch_names = [f'CH{i}' for i in (1,2)]
-                                        for i in range(1, ch_count+1):
-                                            nm = ch_names[i-1] if i-1 < len(ch_names) else f'CH{i}'
-                                            header.append(f'{alias_name}_{nm}_V')
-                                        for i in range(1, ch_count+1):
-                                            nm = ch_names[i-1] if i-1 < len(ch_names) else f'CH{i}'
-                                            header.append(f'{alias_name}_{nm}_I')
-                                    ws.append(header)
-                                except Exception:
-                                    pass
-                            for row in self.buffer:
-                                ws.append(row)
-                            # No .bak backup to avoid extra files
-                            wb.save(self.excel_path)
-                            self.buffer.clear()
-                        finally:
-                            if lock and acquired:
-                                try:
-                                    lock.release()
-                                except Exception:
-                                    pass
-                    def _run(self):
-                        sample_count = 0
-                        if getattr(self_parent, '_record_sync_start', None):
-                            while time.time() < self_parent._record_sync_start and not self._stop_event.is_set():
-                                time.sleep(0.01)
-                        start_time = time.time()
-                        last_report_time = start_time
-                        last_flush = start_time
-                        while not self._stop_event.is_set():
-                            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                            all_voltages = []
-                            all_currents = []
-                            for func in self.get_readings_funcs:
-                                voltages, currents = func()
-                                all_voltages.extend(voltages)
-                                all_currents.extend(currents)
-                            row = [now] + all_voltages + all_currents
-                            self.buffer.append(row)
-                            sample_count += 1
-                            now_ts = time.time()
-                            if now_ts - last_report_time >= 2.0:
-                                elapsed = max(now_ts - start_time, 1e-6)
-                                sps = sample_count / elapsed
-                                update_supply_read_speed(sps)
-                                last_report_time = now_ts
-                            # flush every ~3s or 100 rows
-                            if len(self.buffer) >= 100 or (now_ts - last_flush) >= 3.0:
-                                try:
-                                    self._flush_buffer()
-                                    last_flush = now_ts
-                                except Exception:
-                                    pass
-                            time.sleep(0.01)
-                        # final flush
-                        try:
-                            self._flush_buffer()
-                        except Exception:
-                            pass
-                self.global_recorder = PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
+                self.global_recorder = self._create_supply_recorder(panels, excel_path)
                 self.global_recorder.start()
                 self.statusBar().showMessage('Started recording supplies', 4000)
             if self.spectrum_record_toggle.isChecked():
@@ -327,14 +246,359 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._start_register_recording(excel_path, registers, update_register_read_speed)
                     self.statusBar().showMessage('Started recording registers', 4000)
             self.record_btn.setText('Stop Recording')
+            # Start/ensure save status timer
+            try:
+                if not hasattr(self, '_save_status_timer'):
+                    self._save_status_timer = QtCore.QTimer(self)
+                    self._save_status_timer.setInterval(1000)
+                    self._save_status_timer.timeout.connect(self._update_save_status)
+                self._save_status_timer.start()
+            except Exception:
+                pass
         else:
             # Stop all recordings
             self._stop_all_recordings()
             self.record_btn.setText('Record')
             self.statusBar().showMessage('Stopped recording', 4000)
+            # Reset primed state and enable toggles
+            try:
+                self._record_primed = False
+                self.record_btn.setEnabled(False)
+                for cb in (self.supply_record_toggle, self.spectrum_record_toggle, self.register_record_toggle):
+                    cb.setEnabled(True)
+                if hasattr(self, 'prime_btn'):
+                    self.prime_btn.setText('Prime Recorders')
+                    self.prime_btn.setStyleSheet('')
+            except Exception:
+                pass
 
-    def _stop_all_recordings(self):
-        """Stop supply, spectrum, and register recordings and reset labels."""
+    def _create_supply_recorder(self, panels, excel_path):
+        """Factory for a PatchedSupplyRecorder with background writer and 25Hz throttle."""
+        from supply_recorder import SupplyRecorder
+        self_parent = self
+
+        def update_supply_read_speed(sps: float):
+            try:
+                self_parent.supply_read_speed_label.setText(f'Supply Sample Rate: {sps:.2f} samples/sec')
+            except Exception:
+                pass
+
+        class PatchedSupplyRecorder(SupplyRecorder):
+            def __init__(self, panels, excel_path, sheet_name='supply reads'):
+                super().__init__(panels, excel_path, sheet_name)
+                import queue
+                self._write_q = queue.Queue(maxsize=100000)
+                self._writer_stop = None
+                self._writer_thread = None
+                self._header = self._build_header(panels)
+
+            def _build_header(self, panels):
+                header = ['timestamp']
+                for p in panels:
+                    try:
+                        tab_idx = self_parent.tabs.indexOf(p)
+                        alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
+                    except Exception:
+                        alias_name = getattr(p, 'resource', 'Supply')
+                    if p.__class__.__name__.startswith('Keithley'):
+                        ch_count = 3
+                        try:
+                            ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1, 2, 3)]
+                        except Exception:
+                            ch_names = [f'CH{i}' for i in (1, 2, 3)]
+                    else:
+                        ch_count = 2
+                        ch_names = [f'CH{i}' for i in (1, 2)]
+                    for i in range(1, ch_count + 1):
+                        nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
+                        header.append(f'{alias_name}_{nm}_V')
+                    for i in range(1, ch_count + 1):
+                        nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
+                        header.append(f'{alias_name}_{nm}_I')
+                return header
+
+            def start(self):
+                import threading, time
+                self._writer_stop = threading.Event()
+
+                def writer_loop():
+                    lock = getattr(self_parent, '_excel_lock', None)
+                    acquired = lock.acquire(timeout=5) if lock else True
+                    if acquired:
+                        try:
+                            self_parent._excel_open_locked(self.excel_path)
+                            ws = self_parent._excel_get_sheet_locked(self.sheet_name)
+                            for ci, val in enumerate(self._header, start=1):
+                                ws.cell(row=1, column=ci, value=val)
+                            self_parent._excel_save_locked()
+                        finally:
+                            if lock and acquired:
+                                try:
+                                    lock.release()
+                                except Exception:
+                                    pass
+                    pending = []
+                    last_save = time.time()
+                    flush_rows = 1200
+                    while True:
+                        try:
+                            item = self._write_q.get(timeout=0.3)
+                            pending.append(item)
+                            self._write_q.task_done()
+                        except Exception:
+                            pass
+                        now = time.time()
+                        should_save = pending and (len(pending) >= flush_rows or (now - last_save) >= 8.0)
+                        should_stop = self._writer_stop.is_set() and self._write_q.empty()
+                        if should_save or should_stop:
+                            acquired = lock.acquire(timeout=10) if lock else True
+                            if acquired:
+                                try:
+                                    self_parent._excel_open_locked(self.excel_path)
+                                    ws = self_parent._excel_get_sheet_locked(self.sheet_name)
+                                    for row in pending:
+                                        ws.append(row)
+                                    pending.clear()
+                                    last_save = now
+                                    self_parent._excel_save_locked()
+                                finally:
+                                    if lock and acquired:
+                                        try:
+                                            lock.release()
+                                        except Exception:
+                                            pass
+                        if should_stop and not pending:
+                            break
+
+                self._writer_thread = threading.Thread(target=writer_loop, daemon=True)
+                self._writer_thread.start()
+                return super().start()
+
+            def stop(self):
+                try:
+                    self._stop_event.set()
+                    if self._thread:
+                        self._thread.join()
+                except Exception:
+                    pass
+                try:
+                    if self._writer_stop:
+                        self._writer_stop.set()
+                    if self._writer_thread:
+                        self._writer_thread.join(timeout=10)
+                except Exception:
+                    pass
+
+            def _run(self):
+                import time, datetime
+                sample_count = 0
+                # Wait for prime event then sync time if configured
+                try:
+                    evt = getattr(self_parent, '_record_start_event', None)
+                    if evt is not None:
+                        while not evt.is_set() and not self._stop_event.is_set():
+                            time.sleep(0.005)
+                except Exception:
+                    pass
+                if getattr(self_parent, '_record_sync_start', None):
+                    while time.time() < self_parent._record_sync_start and not self._stop_event.is_set():
+                        time.sleep(0.005)
+                start_time = time.time()
+                last_report_time = start_time
+                target_interval = getattr(self_parent, '_supply_target_interval', 0.04)
+                next_tick = time.perf_counter()
+                while not self._stop_event.is_set():
+                    nowp = time.perf_counter()
+                    if nowp < next_tick:
+                        time.sleep(min(next_tick - nowp, 0.01))
+                        continue
+                    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    all_voltages = []
+                    all_currents = []
+                    for func in self.get_readings_funcs:
+                        voltages, currents = func()
+                        all_voltages.extend(voltages)
+                        all_currents.extend(currents)
+                    row = [now] + all_voltages + all_currents
+                    try:
+                        self._write_q.put_nowait(row)
+                    except Exception:
+                        pass
+                    sample_count += 1
+                    now_ts = time.time()
+                    if now_ts - last_report_time >= 2.0:
+                        elapsed = max(now_ts - start_time, 1e-6)
+                        sps = sample_count / elapsed
+                        update_supply_read_speed(sps)
+                        last_report_time = now_ts
+                    next_tick += target_interval
+                    if next_tick < nowp - target_interval:
+                        next_tick = nowp + target_interval
+
+        return PatchedSupplyRecorder(panels, excel_path, sheet_name='supply reads')
+
+    def on_prime_clicked(self):
+        """Prepare selected recorders: choose file, init Excel, and spin threads waiting for start."""
+        try:
+            # If already primed and user clicks again, unprime/tear-down
+            if getattr(self, '_record_primed', False):
+                # Don't allow unprime while an active recording is running
+                try:
+                    if hasattr(self, 'record_btn') and self.record_btn.isChecked():
+                        self.statusBar().showMessage('Recording is running; stop it before unpriming', 4000)
+                        return
+                except Exception:
+                    pass
+                self._unprime_recorders()
+                return
+            excel_path = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Reads', '', 'Excel Files (*.xlsx)')[0]
+            if excel_path and not excel_path.lower().endswith('.xlsx'):
+                excel_path += '.xlsx'
+            if not excel_path:
+                return
+            import threading
+            # Create excel lock if needed and reset shared workbook state
+            if not hasattr(self, '_excel_lock') or self._excel_lock is None:
+                self._excel_lock = threading.Lock()
+            self._excel_wb = None
+            self._excel_ws_cache = {}
+            self._excel_final_path = excel_path
+            self._excel_working_path = excel_path + '.working.xlsx'
+            self._excel_marker_path = excel_path + '.saving'
+            self._excel_wb_path = self._excel_working_path
+            self._excel_last_save = 0.0
+            self._excel_last_snapshot = 0.0
+            self._excel_saving = False
+            self._last_excel_path = excel_path
+            try:
+                with open(self._excel_marker_path, 'w') as f:
+                    f.write('saving')
+            except Exception:
+                pass
+            # Create a start event and sync time slightly in future
+            self._record_start_event = threading.Event()
+            self._record_sync_start = time.time() + 1.0
+            # Bench info immediately
+            try:
+                self._write_bench_info(excel_path)
+            except Exception:
+                pass
+            # Start selected recorders but they will wait for event/sync
+            if self.supply_record_toggle.isChecked():
+                panels = self.get_all_supply_panels()
+                if panels:
+                    self.global_recorder = self._create_supply_recorder(panels, excel_path)
+                    self.global_recorder.start()
+            if self.spectrum_record_toggle.isChecked():
+                fieldfox_panel = None
+                for i in range(self.tabs.count()):
+                    w = self.tabs.widget(i)
+                    if isinstance(w, FieldFoxSAPanel):
+                        fieldfox_panel = w
+                        break
+                if fieldfox_panel is not None:
+                    def update_spectrum_read_speed(sps: float):
+                        self.spectrum_read_speed_label.setText(f'Spectrum Sample Rate: {sps:.2f} samples/sec')
+                    # Reuse existing helper; it respects _record_sync_start and will wait before loop
+                    self._start_spectrum_capture(fieldfox_panel, excel_path, update_spectrum_read_speed)
+            if self.register_record_toggle.isChecked():
+                registers = []
+                try:
+                    if hasattr(self, 'register_read_array') and self.register_read_array:
+                        registers = self.register_read_array
+                    else:
+                        cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+                        if cfg_name:
+                            cfg_path = os.path.join(self.configs_dir, cfg_name)
+                            if os.path.exists(cfg_path):
+                                with open(cfg_path, 'r') as f:
+                                    data = json.load(f)
+                                    registers = data.get('register_read_array', [])
+                except Exception:
+                    registers = []
+                if registers:
+                    def update_register_read_speed(sps: float):
+                        try:
+                            self.register_read_speed_label.setText(f'Register Sample Rate: {sps:.2f} samples/sec')
+                        except Exception:
+                            pass
+                    self._start_register_recording(excel_path, registers, update_register_read_speed)
+            # Update UI state
+            self._record_primed = True
+            self.record_btn.setEnabled(True)
+            for cb in (self.supply_record_toggle, self.spectrum_record_toggle, self.register_record_toggle):
+                cb.setEnabled(False)
+            if hasattr(self, 'prime_btn'):
+                self.prime_btn.setText('Recorders Primed (Click to Unprime)')
+                self.prime_btn.setStyleSheet('background-color: #4CAF50; color: white;')
+                try:
+                    self.prime_btn.setToolTip('Click to unprime and tear down prepared recorders')
+                except Exception:
+                    pass
+            self.statusBar().showMessage('Recorders primed. Press Record to start.', 4000)
+            # Start/ensure save status timer
+            try:
+                if not hasattr(self, '_save_status_timer'):
+                    self._save_status_timer = QtCore.QTimer(self)
+                    self._save_status_timer.setInterval(1000)
+                    self._save_status_timer.timeout.connect(self._update_save_status)
+                self._save_status_timer.start()
+            except Exception:
+                pass
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Prime failed', str(e))
+
+    def _unprime_recorders(self):
+        """Tear down any primed recorders and reset UI back to pre-primed state."""
+        try:
+            # Safety: if recording is actually running, do nothing here
+            if hasattr(self, 'record_btn') and self.record_btn.isChecked():
+                return
+        except Exception:
+            pass
+        # Stop any background primed threads and clean up workbook markers/files
+        try:
+            # Discard primed artifacts (no final save) when unpriming
+            self._stop_all_recordings(finalize=False)
+        except Exception:
+            pass
+        # Reset primed state and UI
+        try:
+            self._record_primed = False
+            # Clear start sync/event so future primes create fresh ones
+            try:
+                self._record_start_event = None
+                self._record_sync_start = None
+            except Exception:
+                pass
+            if hasattr(self, 'record_btn'):
+                try:
+                    self.record_btn.setChecked(False)
+                except Exception:
+                    pass
+                self.record_btn.setText('Record')
+                self.record_btn.setEnabled(False)
+            for cb in (self.supply_record_toggle, self.spectrum_record_toggle, self.register_record_toggle):
+                try:
+                    cb.setEnabled(True)
+                except Exception:
+                    pass
+            if hasattr(self, 'prime_btn'):
+                try:
+                    self.prime_btn.setText('Prime Recorders')
+                    self.prime_btn.setStyleSheet('')
+                    self.prime_btn.setToolTip('Prepare selected recorders and Excel file; enables Start')
+                except Exception:
+                    pass
+            self.statusBar().showMessage('Recorders unprimed', 3000)
+        except Exception:
+            pass
+
+    def _stop_all_recordings(self, finalize: bool = True):
+        """Stop supply, spectrum, and register recordings and reset labels.
+        finalize=True: flush/save workbook and snapshot final file
+        finalize=False: discard primed working file/marker without saving
+        """
         # Supply
         try:
             if hasattr(self, 'global_recorder') and self.global_recorder:
@@ -342,11 +606,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.global_recorder.stop()
                 except Exception:
                     pass
-                # Final guarded flush (recorder.stop() already tried) ensure persistence
-                try:
-                    lock = getattr(self, '_excel_lock', None)
-                    if lock:
-                        if lock.acquire(timeout=5):
+                # Final guarded flush (only when finalizing)
+                if finalize:
+                    try:
+                        lock = getattr(self, '_excel_lock', None)
+                        if lock and lock.acquire(timeout=5):
                             try:
                                 if getattr(self.global_recorder, 'buffer', None):
                                     self.global_recorder._flush_buffer()
@@ -355,8 +619,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                     lock.release()
                                 except Exception:
                                     pass
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
                 self.global_recorder = None
             if hasattr(self, 'supply_read_speed_label'):
                 self.supply_read_speed_label.setText('Supply Sample Rate: --')
@@ -393,6 +657,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
                 try:
+                    self._register_thread_running = False
+                except Exception:
+                    pass
+                try:
                     self._register_thread.join(timeout=2)
                 except Exception:
                     pass
@@ -401,40 +669,64 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.register_read_speed_label.setText('Register Sample Rate: --')
         except Exception:
             pass
-        # Final workbook save touch (optional) to flush OS buffers
+        # Finalize or discard workbook artifacts
         try:
-            lock = getattr(self, '_excel_lock', None)
-            excel_path = None
-            try:
-                excel_path = getattr(self, '_last_excel_path', None)
-            except Exception:
-                excel_path = None
-            if excel_path and lock:
-                if lock.acquire(timeout=2):
+            # For finalize stops, give writer queues a short window to drain before the last save
+            if finalize:
+                try:
+                    import time as _t
+                    t0 = _t.time()
+                    while (_t.time() - t0) < 2.0:
+                        try:
+                            pending = self._get_total_pending_writes()
+                        except Exception:
+                            pending = 0
+                        if pending <= 0:
+                            break
+                        _t.sleep(0.1)
+                except Exception:
+                    pass
+            if finalize:
+                lock = getattr(self, '_excel_lock', None)
+                if lock and lock.acquire(timeout=5):
                     try:
-                        from openpyxl import load_workbook
-                        wb = load_workbook(excel_path)
-                        wb.save(excel_path)
+                        # Force save and snapshot
+                        self._excel_save_locked(force=True)
                     finally:
                         try:
                             lock.release()
                         except Exception:
                             pass
-            # Remove backup file if it exists (cleanup)
-            if excel_path:
+            # Try to remove marker and working file with small retries; keep status updates active until done
+            try:
+                if not hasattr(self, '_save_status_timer'):
+                    self._save_status_timer = QtCore.QTimer(self)
+                    self._save_status_timer.setInterval(1000)
+                    self._save_status_timer.timeout.connect(self._update_save_status)
+                self._save_status_timer.start()
+            except Exception:
+                pass
+            ok = self._cleanup_excel_artifacts(finalize=finalize, timeout_s=3.0)
+            # Stop save status timer after cleanup
+            try:
+                if hasattr(self, '_save_status_timer'):
+                    self._save_status_timer.stop()
+            except Exception:
+                pass
+            # If discard, also clear more paths so a stale state cannot persist
+            if not finalize:
                 try:
-                    import os
-                    bak_path = excel_path + '.bak'
-                    if os.path.exists(bak_path):
-                        os.remove(bak_path)
+                    self._excel_final_path = None
+                    self._excel_working_path = None
+                    self._excel_marker_path = None
                 except Exception:
                     pass
         except Exception:
             pass
 
     def _start_register_recording(self, excel_path: str, registers: list, rate_cb):
-        """Start register recording in background thread (ACE client)."""
-        import threading, time, datetime, os
+        """Start register recording in background with a non-blocking Excel writer."""
+        import threading, time, datetime, os, queue
         from openpyxl import Workbook, load_workbook
 
         # Normalize register list (accept decimal, hex str, int)
@@ -452,95 +744,96 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         sheet_name = 'register reads'
-        buffer: list[list] = []
-        flush_interval = 50  # rows before forced flush (also time-based)
         start_time = time.time()
         last_report_time = start_time
-        last_flush_time = start_time
         sample_count = 0
 
-        # Prepare workbook / header immediately so file exists early
+        # Prepare workbook / header immediately using cached helpers
         try:
             header = ['timestamp'] + [f'{addr:#x}' for addr in reg_list]
-            if os.path.exists(excel_path):
+            lock = getattr(self, '_excel_lock', None)
+            acquired = lock.acquire(timeout=5) if lock else True
+            if acquired:
                 try:
-                    wb = load_workbook(excel_path)
-                except Exception:
-                    wb = Workbook()
-                if sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    # If empty first cell, append header
-                    if ws.max_row == 1 and ws.max_column == 1 and not ws['A1'].value:
-                        ws.append(header)
-                else:
-                    ws = wb.create_sheet(sheet_name)
-                    ws.append(header)
-            else:
-                wb = Workbook()
-                ws = wb.active
-                ws.title = sheet_name
-                ws.append(header)
-            wb.save(excel_path)
+                    self._excel_open_locked(excel_path)
+                    ws = self._excel_get_sheet_locked(sheet_name)
+                    for ci, val in enumerate(header, start=1):
+                        ws.cell(row=1, column=ci, value=val)
+                    self._excel_save_locked()
+                finally:
+                    if lock and acquired:
+                        try:
+                            lock.release()
+                        except Exception:
+                            pass
         except Exception:
-            # Non-fatal; continue and try writing later
             pass
 
-        def flush_buffer():
-            nonlocal last_flush_time
-            if not buffer:
-                return
-            import os
-            lock = getattr(self, '_excel_lock', None)
-            if lock:
-                acquired = lock.acquire(timeout=5)
-            else:
-                acquired = True
-            if not acquired:
-                return
-            try:
-                if os.path.exists(excel_path):
-                    try:
-                        wb = load_workbook(excel_path)
-                    except Exception:
-                        # Skip flush to avoid overwriting existing file
-                        return
-                else:
-                    wb = Workbook()
-                    ws = wb.active
-                    ws.title = sheet_name
-                    ws.append(['timestamp'] + [f'{addr:#x}' for addr in reg_list])
-                if sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                else:
-                    ws = wb.create_sheet(sheet_name)
-                    ws.append(['timestamp'] + [f'{addr:#x}' for addr in reg_list])
+        # Background writer using a queue; avoids blocking acquisition during wb.save
+        write_q: "queue.Queue[list]" = queue.Queue(maxsize=50000)
+        # expose for UI save status
+        try:
+            self._register_write_q = write_q
+        except Exception:
+            pass
+        writer_stop = threading.Event()
+        flush_interval = 150
+        header = ['timestamp'] + [f'{addr:#x}' for addr in reg_list]
+
+        def writer_loop():
+            pending: list[list] = []
+            last_save = time.time()
+            while True:
                 try:
-                    for ci, val in enumerate(['timestamp'] + [f'{addr:#x}' for addr in reg_list], start=1):
-                        ws.cell(row=1, column=ci, value=val)
-                except Exception:
+                    item = write_q.get(timeout=0.3)
+                    pending.append(item)
+                    write_q.task_done()
+                except queue.Empty:
                     pass
-                for row in buffer:
-                    ws.append(row)
-                # No .bak backup to avoid extra files
-                wb.save(excel_path)
-                try:
-                    self._log(f'Register flush wrote {len(buffer)} rows; sheet rows now {ws.max_row-1}')
-                except Exception:
-                    pass
-                buffer.clear()
-                last_flush_time = time.time()
-            finally:
-                if lock and acquired:
-                    try:
-                        lock.release()
-                    except Exception:
-                        pass
+                now = time.time()
+                should_save = pending and (len(pending) >= flush_interval or (now - last_save) >= 8.0)
+                should_stop = writer_stop.is_set() and write_q.empty()
+                if should_save or should_stop:
+                    lock = getattr(self, '_excel_lock', None)
+                    acquired = lock.acquire(timeout=10) if lock else True
+                    if acquired:
+                        try:
+                            # Use shared helpers to write to working file and snapshot
+                            self._excel_open_locked(excel_path)
+                            ws = self._excel_get_sheet_locked(sheet_name)
+                            try:
+                                for ci, val in enumerate(header, start=1):
+                                    ws.cell(row=1, column=ci, value=val)
+                            except Exception:
+                                pass
+                            for row in pending:
+                                ws.append(row)
+                            pending.clear()
+                            last_save = now
+                            self._excel_save_locked()
+                        finally:
+                            if lock and acquired:
+                                try:
+                                    lock.release()
+                                except Exception:
+                                    pass
+                if should_stop and not pending:
+                    break
+
+        writer_thread = threading.Thread(target=writer_loop, daemon=True)
+        writer_thread.start()
+
         def running_flag():
             return getattr(self, '_register_recording', False) and getattr(self, '_register_thread_running', False)
+
         def worker():
-            nonlocal sample_count, last_report_time, start_time, last_flush_time
-            # Wait for synchronized start time if provided
+            nonlocal sample_count, last_report_time, start_time
+            # Wait for start event if primed, then synchronized start time if provided
             try:
+                evt = getattr(self, '_record_start_event', None)
+                if evt is not None:
+                    while not evt.is_set() and running_flag():
+                        time.sleep(0.01)
                 if getattr(self, '_record_sync_start', None):
                     while time.time() < self._record_sync_start and running_flag():
                         time.sleep(0.01)
@@ -572,13 +865,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         except Exception as err:
                             val = f'ERR:{err}'
                         values.append(val)
-                    buffer.append([nowts] + values)
+                    try:
+                        write_q.put_nowait([nowts] + values)
+                    except queue.Full:
+                        pass
                     sample_count += 1
-                    # Flush on count or ~3s cadence
                     now_time = time.time()
-                    if len(buffer) >= flush_interval or (now_time - last_flush_time) >= 3.0:
-                        flush_buffer()
-                    # Rate update every 2s
                     if now_time - last_report_time >= 2.0:
                         elapsed = max(now_time - start_time, 1e-6)
                         try:
@@ -593,21 +885,145 @@ class MainWindow(QtWidgets.QMainWindow):
                     except Exception:
                         pass
                     time.sleep(0.1)
-            # Final flush
+            # Signal writer to finish and wait for it
             try:
-                flush_buffer()
+                writer_stop.set()
+            except Exception:
+                pass
+            try:
+                writer_thread.join(timeout=10)
+            except Exception:
+                pass
+            try:
+                self._register_thread_running = False
             except Exception:
                 pass
 
-        # Start thread
+        # Start register reader thread
         self._register_recording = True
         self._register_thread_running = True
         self._register_thread = threading.Thread(target=worker, daemon=True)
         self._register_thread.start()
 
+    # --- Shared Excel helpers ---
+    def _excel_open_locked(self, excel_path: str):
+        """Open or return a cached workbook for this session. Caller must hold _excel_lock."""
+        try:
+            import os
+            from openpyxl import Workbook, load_workbook
+            # Always map to working path if configured
+            try:
+                target_path = getattr(self, '_excel_working_path', None) or excel_path
+            except Exception:
+                target_path = excel_path
+            if getattr(self, '_excel_wb', None) is None or getattr(self, '_excel_wb_path', None) != target_path:
+                try:
+                    if os.path.exists(target_path):
+                        self._excel_wb = load_workbook(target_path)
+                    else:
+                        self._excel_wb = Workbook()
+                except Exception:
+                    self._excel_wb = Workbook()
+                self._excel_ws_cache = {}
+                self._excel_wb_path = target_path
+            return self._excel_wb
+        except Exception:
+            return None
+
+    def _excel_get_sheet_locked(self, sheet_name: str):
+        """Get or create a worksheet; cached by name. Caller must hold _excel_lock."""
+        try:
+            if sheet_name in self._excel_ws_cache:
+                return self._excel_ws_cache[sheet_name]
+            wb = getattr(self, '_excel_wb', None)
+            if wb is None:
+                return None
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+            else:
+                if getattr(wb, 'active', None) is not None and len(wb.sheetnames) == 1 and wb.active.max_row == 1 and wb.active.max_column == 1 and not wb.active['A1'].value:
+                    ws = wb.active
+                    ws.title = sheet_name
+                else:
+                    ws = wb.create_sheet(sheet_name)
+            self._excel_ws_cache[sheet_name] = ws
+            return ws
+        except Exception:
+            return None
+
+    def _excel_save_locked(self, force: bool = False):
+        """Save cached workbook to working file, and snapshot atomically to final occasionally. Caller holds _excel_lock."""
+        try:
+            import time, os, shutil
+            wb = getattr(self, '_excel_wb', None)
+            wpath = getattr(self, '_excel_wb_path', None)
+            if not wb or not wpath:
+                return
+            now = time.time()
+            last = getattr(self, '_excel_last_save', 0.0)
+            # Save to working file (default every ~10s; force overrides)
+            save_interval = 10.0
+            if force or (now - last) >= save_interval:
+                self._excel_saving = True
+                wb.save(wpath)
+                self._excel_last_save = now
+            # Periodically snapshot to final using atomic replace
+            fpath = getattr(self, '_excel_final_path', None)
+            if fpath:
+                last_snap = getattr(self, '_excel_last_snapshot', 0.0)
+                # Snapshot no more than ~every 30s during run, or immediately if forced.
+                snapshot_interval = 30.0
+                # Avoid snapshotting while large write queues are pending to reduce churn on big runs
+                pending_ok = True
+                try:
+                    total_pending = self._get_total_pending_writes()
+                    pending_ok = (total_pending <= 100)
+                except Exception:
+                    pending_ok = True
+                if force or ((now - last_snap) >= snapshot_interval and pending_ok):
+                    tmp_final = fpath + '.tmp'
+                    # Write a copy of working to tmp, then replace final
+                    try:
+                        shutil.copyfile(wpath, tmp_final)
+                        os.replace(tmp_final, fpath)
+                        self._excel_last_snapshot = now
+                    except Exception:
+                        try:
+                            if os.path.exists(tmp_final):
+                                os.remove(tmp_final)
+                        except Exception:
+                            pass
+            self._excel_saving = False
+        except Exception:
+            try:
+                self._excel_saving = False
+            except Exception:
+                pass
+            pass
+
+    def _get_total_pending_writes(self) -> int:
+        """Return approximate total pending items across known writer queues."""
+        total = 0
+        try:
+            if hasattr(self, 'global_recorder') and getattr(self.global_recorder, '_write_q', None):
+                total += self.global_recorder._write_q.qsize()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, '_spectrum_write_q') and getattr(self, '_spectrum_write_q', None):
+                total += self._spectrum_write_q.qsize()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, '_register_write_q') and getattr(self, '_register_write_q', None):
+                total += self._register_write_q.qsize()
+        except Exception:
+            pass
+        return total
+
     def _start_spectrum_capture(self, panel: FieldFoxSAPanel, excel_path: str, rate_cb):
-        """Start spectrum capture in background thread."""
-        import threading
+        """Start spectrum capture in background with a non-blocking Excel writer."""
+        import threading, time, datetime, queue
         from openpyxl import Workbook, load_workbook
         import os
 
@@ -635,31 +1051,28 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             freq = []
 
-        # Create/ensure workbook sheet and header up front
+        # Create/ensure workbook sheet and header up front using shared workbook
         try:
-            try:
-                n = len(freq)
-            except Exception:
-                n = 0
-            header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
-            if os.path.exists(excel_path):
+            lock = getattr(self, '_excel_lock', None)
+            acquired = lock.acquire(timeout=5) if lock else True
+            if acquired:
                 try:
-                    wb = load_workbook(excel_path)
-                except Exception:
-                    wb = Workbook()
-                if 'capture data' in wb.sheetnames:
-                    ws = wb['capture data']
-                    if ws.max_row == 1 and ws.max_column == 1 and not ws['A1'].value:
-                        ws.append(header)
-                else:
-                    ws = wb.create_sheet('capture data')
-                    ws.append(header)
-            else:
-                wb = Workbook()
-                ws = wb.active
-                ws.title = 'capture data'
-                ws.append(header)
-            wb.save(excel_path)
+                    self._excel_open_locked(excel_path)
+                    ws = self._excel_get_sheet_locked('capture data')
+                    try:
+                        n = len(freq)
+                    except Exception:
+                        n = 0
+                    header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+                    for ci, val in enumerate(header, start=1):
+                        ws.cell(row=1, column=ci, value=val)
+                    self._excel_save_locked()
+                finally:
+                    if lock and acquired:
+                        try:
+                            lock.release()
+                        except Exception:
+                            pass
         except Exception:
             pass
 
@@ -676,85 +1089,76 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        buffer = []
-        flush_interval = 25
+        # Background writer for spectrum rows
+        try:
+            n0 = len(freq)
+        except Exception:
+            n0 = 0
+        desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n0 > 0 else [])
+        write_q: "queue.Queue[list]" = queue.Queue(maxsize=20000)
+        try:
+            self._spectrum_write_q = write_q
+        except Exception:
+            pass
+        writer_stop = threading.Event()
+        flush_interval = 200
+
+        def spec_writer_loop():
+            pending: list[list] = []
+            last_save = time.time()
+            while True:
+                try:
+                    item = write_q.get(timeout=0.3)
+                    pending.append(item)
+                    write_q.task_done()
+                except queue.Empty:
+                    pass
+                now = time.time()
+                should_save = pending and (len(pending) >= flush_interval or (now - last_save) >= 6.0)
+                should_stop = writer_stop.is_set() and write_q.empty()
+                if should_save or should_stop:
+                    lock = getattr(self, '_excel_lock', None)
+                    acquired = lock.acquire(timeout=10) if lock else True
+                    if acquired:
+                        try:
+                            self._excel_open_locked(excel_path)
+                            ws = self._excel_get_sheet_locked('capture data')
+                            try:
+                                for ci, val in enumerate(desired_header, start=1):
+                                    ws.cell(row=1, column=ci, value=val)
+                            except Exception:
+                                pass
+                            for row in pending:
+                                ws.append(row)
+                            pending.clear()
+                            last_save = now
+                            self._excel_save_locked()
+                        finally:
+                            if lock and acquired:
+                                try:
+                                    lock.release()
+                                except Exception:
+                                    pass
+                if should_stop and not pending:
+                    break
+
+        spec_writer_thread = threading.Thread(target=spec_writer_loop, daemon=True)
+        spec_writer_thread.start()
+
         start_time = time.time()
         last_report_time = start_time
-        last_flush_time = start_time
         sample_count = 0
-
-        def flush_buffer():
-            if not buffer:
-                return
-            import os
-            lock = getattr(self, '_excel_lock', None)
-            if lock:
-                acquired = lock.acquire(timeout=5)
-            else:
-                acquired = True
-            if not acquired:
-                return
-            try:
-                if os.path.exists(excel_path):
-                    try:
-                        wb = load_workbook(excel_path)
-                    except Exception:
-                        # Skip this flush instead of overwriting file
-                        return
-                    if 'capture data' in wb.sheetnames:
-                        ws = wb['capture data']
-                    else:
-                        ws = wb.create_sheet('capture data')
-                        try:
-                            n = len(freq)
-                        except Exception:
-                            n = 0
-                        header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
-                        ws.append(header)
-                else:
-                    wb = Workbook()
-                    ws = wb.active
-                    ws.title = 'capture data'
-                    try:
-                        n = len(freq)
-                    except Exception:
-                        n = 0
-                    header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
-                    ws.append(header)
-                # Ensure header matches current freq axis
-                try:
-                    n = len(freq)
-                except Exception:
-                    n = 0
-                desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
-                try:
-                    for ci, val in enumerate(desired_header, start=1):
-                        ws.cell(row=1, column=ci, value=val)
-                except Exception:
-                    pass
-
-                for row in buffer:
-                    ws.append(row)
-                # No .bak backup to avoid extra files
-                wb.save(excel_path)
-                try:
-                    self._log(f'Spectrum flush wrote {len(buffer)} rows; sheet rows now {ws.max_row-1}')
-                except Exception:
-                    pass
-                buffer.clear()
-            finally:
-                if lock and acquired:
-                    try:
-                        lock.release()
-                    except Exception:
-                        pass
         def running_flag():
             return getattr(self, '_spectrum_recording', False) and getattr(self, '_spectrum_thread_running', False)
         def worker():
-            nonlocal sample_count, last_report_time, last_flush_time, freq
+            nonlocal sample_count, last_report_time, freq, desired_header
             import pyvisa
-            # Wait for synchronized start if defined
+            # Wait for start event if primed, then synchronized start if defined
             try:
+                evt = getattr(self, '_record_start_event', None)
+                if evt is not None:
+                    while not evt.is_set() and running_flag():
+                        time.sleep(0.01)
                 if getattr(self, '_record_sync_start', None):
                     while time.time() < self._record_sync_start and running_flag():
                         time.sleep(0.01)
@@ -779,18 +1183,21 @@ class MainWindow(QtWidgets.QMainWindow):
                     if not n_freq or (hasattr(amplitudes, '__len__') and len(amplitudes) != n_freq):
                         try:
                             freq = panel.sa.get_freq_axis(panel.unit_combo.currentText())
+                            # Update header for writer to reflect new axis
+                            try:
+                                n1 = len(freq)
+                            except Exception:
+                                n1 = 0
+                            desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n1 > 0 else [])
                         except Exception:
                             pass
                     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                     row = [now] + [float(a) for a in amplitudes]
-                    buffer.append(row)
+                    try:
+                        write_q.put_nowait(row)
+                    except queue.Full:
+                        pass
                     sample_count += 1
-
-                    # Flush on count threshold or every ~3 seconds
-                    now_ts = time.time()
-                    if len(buffer) >= flush_interval or (now_ts - last_flush_time) >= 3.0:
-                        flush_buffer()
-                        last_flush_time = now_ts
                 except pyvisa.errors.InvalidSession:
                     break
                 except Exception as e:
@@ -815,10 +1222,97 @@ class MainWindow(QtWidgets.QMainWindow):
                     rate_cb(sample_count / elapsed if elapsed > 0 else 0.0)
                     last_report_time = now_time
                 time.sleep(0.1)
-            flush_buffer()
+            # Finish writer
+            try:
+                writer_stop.set()
+            except Exception:
+                pass
+            try:
+                spec_writer_thread.join(timeout=10)
+            except Exception:
+                pass
 
         self._spectrum_thread = threading.Thread(target=worker, daemon=True)
         self._spectrum_thread.start()
+
+    def _update_save_status(self):
+        """Update status bar hinting whether Excel is still being saved; discourage opening file prematurely."""
+        try:
+            saving = bool(getattr(self, '_excel_saving', False))
+            has_marker = False
+            try:
+                marker = getattr(self, '_excel_marker_path', '')
+                has_marker = bool(marker) and os.path.exists(marker)
+            except Exception:
+                has_marker = False
+            has_working = False
+            try:
+                wpath = getattr(self, '_excel_working_path', '')
+                has_working = bool(wpath) and os.path.exists(wpath)
+            except Exception:
+                has_working = False
+            pending = 0
+            try:
+                # Sum known queues
+                if hasattr(self, 'global_recorder') and getattr(self.global_recorder, '_write_q', None):
+                    pending += self.global_recorder._write_q.qsize()
+                if hasattr(self, '_spectrum_write_q') and getattr(self, '_spectrum_write_q', None):
+                    pending += self._spectrum_write_q.qsize()
+                if hasattr(self, '_register_write_q') and getattr(self, '_register_write_q', None):
+                    pending += self._register_write_q.qsize()
+            except Exception:
+                pass
+            if saving or has_marker or has_working or pending > 0:
+                self.statusBar().showMessage('Saving Excel data… please do not open the file yet', 2000)
+            else:
+                # show that file is ready briefly
+                self.statusBar().showMessage('Excel file ready', 1500)
+        except Exception:
+            pass
+
+    def _cleanup_excel_artifacts(self, finalize: bool, timeout_s: float = 3.0) -> bool:
+        """Try to remove .saving marker and .working.xlsx file with small retries.
+        Returns True if both (if present) are gone.
+        If finalize is False, also clear in-memory workbook state.
+        """
+        import time
+        end = time.time() + max(0.5, float(timeout_s))
+        ok = False
+        while time.time() < end:
+            ok = True
+            # Try remove marker
+            try:
+                marker = getattr(self, '_excel_marker_path', '')
+                if marker and os.path.exists(marker):
+                    try:
+                        os.remove(marker)
+                    except Exception:
+                        ok = False
+            except Exception:
+                pass
+            # Try remove working file
+            try:
+                wpath = getattr(self, '_excel_working_path', '')
+                if wpath and os.path.exists(wpath):
+                    try:
+                        os.remove(wpath)
+                    except Exception:
+                        ok = False
+            except Exception:
+                pass
+            if ok:
+                break
+            time.sleep(0.2)
+        # Optionally clear in-memory workbook references to release any latent handles
+        if not finalize:
+            try:
+                self._excel_wb = None
+                self._excel_ws_cache = {}
+                self._excel_wb_path = None
+                # Intentionally keep final path so next prime can reuse, or clear if desired
+            except Exception:
+                pass
+        return ok
 
     def _write_bench_info(self, excel_path: str):
         """Create or update a 'Bench Info' sheet with a summary of the bench equipment and settings."""
@@ -1025,45 +1519,49 @@ class MainWindow(QtWidgets.QMainWindow):
                 running = bool(getattr(panel, '_capture_thread', None))
                 state = 'capture:running' if running else 'capture:stopped'
                 rows.append([ts, 'Keysight FieldFox', tab_name, resource, serial, 'Yes' if connected else 'No', state, json.dumps(settings)])
-        # Write into Excel with preservation + retry strategy
+        # Write into Excel via cached helpers (working path) with retry strategy
         try:
-            if os.path.exists(excel_path):
+            lock = getattr(self, '_excel_lock', None)
+            acquired = lock.acquire(timeout=5) if lock else True
+            if acquired:
                 try:
-                    wb = load_workbook(excel_path)
-                except Exception:
-                    wb = Workbook()
-            else:
-                wb = Workbook()
-            if 'Bench Info' in wb.sheetnames:
-                ws = wb['Bench Info']
-                # Clear existing content except header if header present
-                try:
-                    # Remove all rows to rebuild
-                    for _ in range(ws.max_row, 0, -1):
-                        ws.delete_rows(1)
-                except Exception:
-                    pass
-            else:
-                ws = wb.create_sheet('Bench Info')
-            header = ['timestamp', 'instrument', 'name', 'resource', 'serial', 'connected', 'state', 'settings']
-            ws.append(header)
-            if rows:
-                for r in rows:
-                    ws.append(r)
-            else:
-                # Placeholder row so sheet not empty; schedule retry shortly
-                ws.append([ts, '(none)', '(no instruments)', '', '', '', '', '{}'])
-                try:
-                    QtCore.QTimer.singleShot(1000, lambda: self._write_bench_info(excel_path))
-                except Exception:
-                    pass
-            # Remove default empty sheet if any
-            try:
-                if 'Sheet' in wb.sheetnames and wb['Sheet'].max_row == 1 and wb['Sheet'].max_column == 1 and not wb['Sheet']['A1'].value:
-                    del wb['Sheet']
-            except Exception:
-                pass
-            wb.save(excel_path)
+                    wb = self._excel_open_locked(excel_path)
+                    if wb is None:
+                        return
+                    if 'Bench Info' in wb.sheetnames:
+                        ws = wb['Bench Info']
+                        # Clear existing content
+                        try:
+                            for _ in range(ws.max_row, 0, -1):
+                                ws.delete_rows(1)
+                        except Exception:
+                            pass
+                    else:
+                        ws = wb.create_sheet('Bench Info')
+                    header = ['timestamp', 'instrument', 'name', 'resource', 'serial', 'connected', 'state', 'settings']
+                    ws.append(header)
+                    if rows:
+                        for r in rows:
+                            ws.append(r)
+                    else:
+                        ws.append([ts, '(none)', '(no instruments)', '', '', '', '', '{}'])
+                        try:
+                            QtCore.QTimer.singleShot(1000, lambda: self._write_bench_info(excel_path))
+                        except Exception:
+                            pass
+                    # Remove default empty sheet if any
+                    try:
+                        if 'Sheet' in wb.sheetnames and wb['Sheet'].max_row == 1 and wb['Sheet'].max_column == 1 and not wb['Sheet']['A1'].value:
+                            del wb['Sheet']
+                    except Exception:
+                        pass
+                    self._excel_save_locked()
+                finally:
+                    if lock and acquired:
+                        try:
+                            lock.release()
+                        except Exception:
+                            pass
         except Exception as e:
             try:
                 self._log(f'Bench Info write error: {e}')
@@ -1583,7 +2081,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         setup_layout.addWidget(self.tabs)
 
-        self.statusBar().showMessage('Ready')
+    # Leave status blank until the initial VISA scan completes
 
         self.top_tabs.addTab(setup_widget, "Setup")
 
@@ -1646,6 +2144,40 @@ class MainWindow(QtWidgets.QMainWindow):
         cfg_row.addWidget(self.configure_part_btn)
         prog_layout.addLayout(cfg_row)
 
+        # Search for new programmings row
+        search_row = QtWidgets.QHBoxLayout()
+        self.logic_rescan_btn = QtWidgets.QPushButton('Search for New Programmings')
+        def _on_rescan_logic():
+            try:
+                # Refresh list
+                self._refresh_logic_combo()
+                # Pick the most recently modified .py in the directory
+                try:
+                    files = [f for f in os.listdir(self.program_logic_dir) if f.lower().endswith('.py')]
+                except Exception:
+                    files = []
+                newest_path = ''
+                newest_mtime = -1
+                for f in files:
+                    full = os.path.join(self.program_logic_dir, f)
+                    try:
+                        mt = os.path.getmtime(full)
+                        if mt > newest_mtime:
+                            newest_mtime = mt
+                            newest_path = full
+                    except Exception:
+                        pass
+                if newest_path:
+                    self._ensure_logic_in_combo(newest_path)
+                    self.statusBar().showMessage(f'Selected newest logic: {os.path.basename(newest_path)}', 4000)
+                else:
+                    self.statusBar().showMessage('No logic files found', 3000)
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(self, 'Rescan failed', str(e))
+        self.logic_rescan_btn.clicked.connect(_on_rescan_logic)
+        search_row.addWidget(self.logic_rescan_btn)
+        prog_layout.addLayout(search_row)
+
         # Programming tab run log (live)
         prog_layout.addWidget(QtWidgets.QLabel('Run Log:'))
         self.program_log = QtWidgets.QPlainTextEdit()
@@ -1672,10 +2204,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # --- Unified Record Controls ---
         record_row = QtWidgets.QHBoxLayout()
+        # Prime button prepares threads and enables Start
+        self.prime_btn = QtWidgets.QPushButton('Prime Recorders')
+        self.prime_btn.setToolTip('Prepare selected recorders and Excel file; enables Start')
+        self.prime_btn.clicked.connect(self.on_prime_clicked)
+        record_row.addWidget(self.prime_btn)
         self.record_btn = QtWidgets.QPushButton('Record')
         self.record_btn.setCheckable(True)
         self.record_btn.setChecked(False)
         self.record_btn.clicked.connect(self.on_record_clicked)
+        # Start disabled until primed
+        self.record_btn.setEnabled(False)
         record_row.addWidget(self.record_btn)
         self.supply_record_toggle = QtWidgets.QCheckBox('Supply')
         self.supply_record_toggle.setChecked(True)
@@ -1695,10 +2234,12 @@ class MainWindow(QtWidgets.QMainWindow):
         record_row.addWidget(self.register_read_speed_label)
         # Add more toggles here for future metrics
         test2_layout.addLayout(record_row)
+        # Priming state
+        self._record_primed = False
 
         # Soft Reset button (runs Configure Part logic)
         prog_row = QtWidgets.QHBoxLayout()
-        self.program_now_btn = QtWidgets.QPushButton('Soft Reset')
+        self.program_now_btn = QtWidgets.QPushButton('Program Device / Soft Reset')
         self.program_now_btn.clicked.connect(self.soft_reset)
         prog_row.addWidget(self.program_now_btn)
         test2_layout.addLayout(prog_row)
@@ -1726,10 +2267,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # --- Settings Tab (Aliases) ---
         self._init_settings_tab()
 
-        # Auto-scan VISA resources shortly after startup so detected devices
-        # appear without the user needing to press Scan (Scan button remains as backup).
+        # Prompt for aliasing mode BEFORE any VISA scan; the prompt will trigger the first scan.
         try:
-            QtCore.QTimer.singleShot(200, lambda: self.on_scan_instruments())
+            QtCore.QTimer.singleShot(0, self._prompt_alias_startup)
         except Exception:
             pass
 
@@ -1851,10 +2391,42 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _apply_alias_profile_to_ui(self):
         try:
+            # Populate dual lists: aliases on left, resources on right
+            aliases = sorted(self.alias_map.keys())
             self.alias_list.clear()
-            for k in sorted(self.alias_map.keys()):
-                self.alias_list.addItem(f"{k}  ->  {self.alias_map[k]}")
+            if hasattr(self, 'alias_res_list'):
+                self.alias_res_list.clear()
+            for k in aliases:
+                self.alias_list.addItem(k)
+                if hasattr(self, 'alias_res_list'):
+                    self.alias_res_list.addItem(self.alias_map.get(k, ''))
             self.alias_profile_name.setText(self.alias_profile or '')
+        except Exception:
+            pass
+
+    def _sync_alias_map_from_lists(self):
+        """Rebuild alias_map from the current lists (index-aligned)."""
+        try:
+            if not hasattr(self, 'alias_res_list'):
+                return
+            new_map = {}
+            n = min(self.alias_list.count(), self.alias_res_list.count())
+            for i in range(n):
+                alias_item = self.alias_list.item(i)
+                res_item = self.alias_res_list.item(i)
+                if not alias_item:
+                    continue
+                alias = alias_item.text()
+                res = res_item.text() if res_item else ''
+                new_map[alias] = res
+            self.alias_map = new_map
+            self.statusBar().showMessage('Updated alias mapping from drag-and-drop', 3000)
+        except Exception:
+            pass
+        # Also update the resource lists in the settings tab if visible
+        try:
+            if hasattr(self, 'alias_profile_combo'):
+                self._refresh_alias_profiles()
         except Exception:
             pass
 
@@ -1963,6 +2535,215 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alias_map = new_map
         self._apply_alias_profile_to_ui()
 
+    def _refresh_unmapped_instruments(self):
+        """Scan VISA and list instruments not present in current alias_map."""
+        try:
+            self.unmapped_list.clear()
+        except Exception:
+            pass
+        try:
+            rm = pyvisa.ResourceManager()
+            resources = list(rm.list_resources())
+        except Exception:
+            resources = []
+        # Build set of already-mapped resources
+        mapped = set((self.alias_map or {}).values())
+        # For display, include a simple type guess via *IDN?
+        def classify(res: str) -> str:
+            try:
+                inst = rm.open_resource(res, timeout=1200)
+                try:
+                    try:
+                        inst.clear()
+                    except Exception:
+                        pass
+                    idn = inst.query('*IDN?')
+                finally:
+                    try:
+                        inst.close()
+                    except Exception:
+                        pass
+                lidn = (idn or '').upper()
+                if 'KEITHLEY' in lidn or '2230' in lidn:
+                    return 'Keithley'
+                if 'EL34243' in lidn or ('KEYSIGHT' in lidn and 'ELECTRONIC LOAD' in lidn):
+                    return 'Keysight EL'
+                if 'E36233A' in lidn:
+                    return 'E36233A'
+                if 'FIELDFOX' in lidn or 'N99' in lidn or 'HANDHELD SPECTRUM' in lidn:
+                    return 'FieldFox'
+                if 'HITTITE' in lidn or 'SIG GEN' in lidn:
+                    return 'Hittite'
+                if 'ROHDE' in lidn or 'SCHWARZ' in lidn or 'SMA' in lidn:
+                    return 'RohdeSchwarz SMA'
+                return 'Unknown'
+            except Exception:
+                return 'Unknown'
+        try:
+            for res in resources:
+                if res in mapped:
+                    continue
+                typ = classify(res)
+                # Show short label (last token) alongside full resource and type
+                short = res.split('::')[3] if '::' in res and len(res.split('::')) > 3 else res
+                item = QtWidgets.QListWidgetItem(f'{short}    ({typ})\n{res}')
+                # Store original resource and type in item data
+                item.setData(QtCore.Qt.UserRole, (res, typ))
+                self.unmapped_list.addItem(item)
+            self.statusBar().showMessage('Unmapped instruments list refreshed', 3000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Scan failed', str(e))
+
+    def _add_selected_unmapped_to_profile(self, add_all: bool = False):
+        """Add selected (or all) unmapped instruments into the current alias profile."""
+        # Ensure we have a profile name to save into
+        try:
+            if not self.alias_profile:
+                # If no named profile, default to 'default' in-memory without saving yet
+                self.alias_profile = self.alias_profile or 'default'
+        except Exception:
+            pass
+        try:
+            items = []
+            if add_all:
+                for i in range(self.unmapped_list.count()):
+                    items.append(self.unmapped_list.item(i))
+            else:
+                items = self.unmapped_list.selectedItems() or []
+            if not items:
+                QtWidgets.QMessageBox.information(self, 'No selection', 'No instruments selected to add.')
+                return
+            # Build counters per type to generate sensible alias names
+            counters = {}
+            # Seed counters based on existing aliases to avoid collisions
+            try:
+                for alias in (self.alias_map or {}).keys():
+                    base = ''.join(ch for ch in alias if not ch.isdigit()).strip()
+                    num = ''.join(ch for ch in alias if ch.isdigit())
+                    if base:
+                        counters[base] = max(counters.get(base, -1), int(num) if num.isdigit() else -1)
+            except Exception:
+                pass
+            for it in items:
+                res, typ = it.data(QtCore.Qt.UserRole)
+                # Map type to a base alias token
+                base = {
+                    'Keithley': 'Keithley',
+                    'Keysight EL': 'Keysight EL',
+                    'E36233A': 'E36233A',
+                    'FieldFox': 'FieldFox',
+                    'Hittite': 'Hittite',
+                    'RohdeSchwarz SMA': 'RohdeSchwarz SMA',
+                }.get(typ, 'Unknown')
+                idx = counters.get(base, -1) + 1
+                counters[base] = idx
+                alias = f'{base} {idx}' if base != 'Unknown' else f'Unknown {idx}'
+                # Add to alias map
+                self.alias_map[alias] = res
+            # Refresh UI
+            self._apply_alias_profile_to_ui()
+            # Persist profile if a name is present
+            try:
+                if self.alias_profile:
+                    self._save_alias_profile(self.alias_profile)
+            except Exception:
+                pass
+            # Remove added items from the unmapped list
+            try:
+                for it in items:
+                    row = self.unmapped_list.row(it)
+                    self.unmapped_list.takeItem(row)
+            except Exception:
+                pass
+            self.statusBar().showMessage('Added instrument(s) to alias profile', 3000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Add failed', str(e))
+
+    def _suggest_aliases_from_scan(self):
+        """Scan VISA and populate alias_map with suggested aliases for all detected instruments.
+        Existing aliases can be kept and only missing ones added, or replaced based on a prompt.
+        """
+        try:
+            rm = pyvisa.ResourceManager()
+            resources = list(rm.list_resources())
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Scan failed', str(e))
+            return
+        # Build a fresh suggestion map by classifying and indexing
+        suggestion = {}
+        try:
+            cats = {}
+            for res in resources:
+                typ = 'Unknown'
+                idn = ''
+                try:
+                    inst = rm.open_resource(res, timeout=1200)
+                    try:
+                        try:
+                            inst.clear()
+                        except Exception:
+                            pass
+                        idn = inst.query('*IDN?').upper()
+                    finally:
+                        try:
+                            inst.close()
+                        except Exception:
+                            pass
+                except Exception:
+                    idn = ''
+                if 'KEITHLEY' in idn or '2230' in idn:
+                    typ = 'Keithley'
+                elif 'EL34243' in idn or ('KEYSIGHT' in idn and 'ELECTRONIC LOAD' in idn):
+                    typ = 'Keysight EL'
+                elif 'E36233A' in idn:
+                    typ = 'E36233A'
+                elif 'FIELDFOX' in idn or 'N99' in idn or 'HANDHELD SPECTRUM' in idn:
+                    typ = 'FieldFox'
+                elif 'HITTITE' in idn or 'SIG GEN' in idn:
+                    typ = 'Hittite'
+                elif 'ROHDE' in idn or 'SCHWARZ' in idn or 'SMA' in idn:
+                    typ = 'RohdeSchwarz SMA'
+                cats.setdefault(typ, []).append(res)
+            for typ, lst in cats.items():
+                for i, res in enumerate(sorted(lst)):
+                    alias = f'{typ} {i}' if typ != 'Unknown' else f'Unknown {i}'
+                    suggestion[alias] = res
+        except Exception:
+            suggestion = {f'Resource {i}': res for i, res in enumerate(resources)}
+        # Ask how to apply
+        try:
+            resp = QtWidgets.QMessageBox.question(
+                self, 'Apply suggested aliases',
+                'Apply suggested aliases to current profile?\nYes: merge (keep existing, add new)\nNo: replace current profile',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Yes)
+        except Exception:
+            resp = QtWidgets.QMessageBox.Yes
+        if resp == QtWidgets.QMessageBox.Cancel:
+            return
+        try:
+            if resp == QtWidgets.QMessageBox.No:
+                # Replace
+                self.alias_map = suggestion
+            else:
+                # Merge: keep existing; add missing resources
+                existing_res = set(self.alias_map.values()) if self.alias_map else set()
+                for alias, res in suggestion.items():
+                    if res in existing_res:
+                        continue
+                    new_alias = alias
+                    k = 1
+                    while new_alias in self.alias_map:
+                        new_alias = f'{alias} {k}'
+                        k += 1
+                    self.alias_map[new_alias] = res
+            self._apply_alias_profile_to_ui()
+            if self.alias_profile:
+                self._save_alias_profile(self.alias_profile)
+            self.statusBar().showMessage('Aliases updated from scan', 3000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Apply failed', str(e))
+
     def _auto_select_alias_profile(self, resources: list):
         """Auto-pick the best matching alias profile based on current resources."""
         try:
@@ -2019,21 +2800,60 @@ class MainWindow(QtWidgets.QMainWindow):
         prow.addWidget(save_btn)
         prow.addWidget(del_btn)
         layout.addLayout(prow)
-        # Alias list and actions
+        # Alias mapping area with drag-and-drop reorder support (right list reorders resources)
+        layout.addWidget(QtWidgets.QLabel('Drag instruments (right) to align with alias names (left):'))
+        lists_row = QtWidgets.QHBoxLayout()
+        # Left: alias names (static)
         self.alias_list = QtWidgets.QListWidget()
-        layout.addWidget(self.alias_list)
-        brow = QtWidgets.QHBoxLayout()
-        scan_btn = QtWidgets.QPushButton('Scan & Suggest Mapping')
-        def on_scan_suggest():
-            try:
-                rm = pyvisa.ResourceManager()
-                resources = list(rm.list_resources())
-            except Exception:
-                resources = []
-            self._build_aliases_from_resources(resources)
-        scan_btn.clicked.connect(on_scan_suggest)
-        brow.addWidget(scan_btn)
-        layout.addLayout(brow)
+        self.alias_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.alias_list.setDragEnabled(False)
+        self.alias_list.setAcceptDrops(False)
+        # Right: resources (draggable to reorder)
+        self.alias_res_list = QtWidgets.QListWidget()
+        self.alias_res_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.alias_res_list.setDragEnabled(True)
+        self.alias_res_list.setAcceptDrops(True)
+        self.alias_res_list.setDefaultDropAction(QtCore.Qt.MoveAction)
+        self.alias_res_list.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+        try:
+            self.alias_res_list.model().rowsMoved.connect(lambda *args: self._sync_alias_map_from_lists())
+        except Exception:
+            pass
+        lists_row.addWidget(self.alias_list, 1)
+        lists_row.addWidget(self.alias_res_list, 2)
+        layout.addLayout(lists_row)
+        # Unmapped instruments area
+        layout.addWidget(QtWidgets.QLabel('Unmapped instruments (present on VISA but not in this alias profile):'))
+        self.unmapped_list = QtWidgets.QListWidget()
+        self.unmapped_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        layout.addWidget(self.unmapped_list)
+
+        # Controls for refreshing and adding to profile
+        controls_row = QtWidgets.QHBoxLayout()
+        refresh_btn = QtWidgets.QPushButton('Refresh Instruments')
+        refresh_btn.setToolTip('Scan VISA and list devices not currently mapped in the alias profile')
+        refresh_btn.clicked.connect(self._refresh_unmapped_instruments)
+        add_sel_btn = QtWidgets.QPushButton('Add Selected to Profile')
+        add_sel_btn.setToolTip('Add the selected unmapped instruments to this alias profile')
+        add_sel_btn.clicked.connect(self._add_selected_unmapped_to_profile)
+        add_all_btn = QtWidgets.QPushButton('Add All Missing')
+        add_all_btn.setToolTip('Add all unmapped instruments to this alias profile')
+        add_all_btn.clicked.connect(lambda: self._add_selected_unmapped_to_profile(add_all=True))
+        controls_row.addWidget(refresh_btn)
+        controls_row.addWidget(add_sel_btn)
+        controls_row.addWidget(add_all_btn)
+        controls_row.addStretch(1)
+        layout.addLayout(controls_row)
+
+        # Utilities row: Suggest Aliases (auto-build from current VISA scan)
+        util_row = QtWidgets.QHBoxLayout()
+        suggest_btn = QtWidgets.QPushButton('Suggest Aliases')
+        suggest_btn.setToolTip('Automatically generate alias names for all detected instruments')
+        suggest_btn.clicked.connect(self._suggest_aliases_from_scan)
+        util_row.addWidget(suggest_btn)
+        util_row.addStretch(1)
+        layout.addLayout(util_row)
+
         self.top_tabs.addTab(settings_widget, 'Settings')
 
     def disconnect_all_instruments(self):
@@ -2324,8 +3144,21 @@ class MainWindow(QtWidgets.QMainWindow):
             # restore selected program logic file if present
             try:
                 logic_path = content.get('program_logic_path', '')
-                if logic_path:
+                if logic_path and os.path.exists(logic_path):
+                    # Use the path saved in the config if it still exists
                     self._ensure_logic_in_combo(logic_path)
+                else:
+                    # No path provided or file missing: try to auto-select a matching logic
+                    try:
+                        auto_logic = self._auto_select_logic_for_config(path, instruments, content)
+                    except Exception:
+                        auto_logic = ''
+                    if auto_logic:
+                        self._ensure_logic_in_combo(auto_logic)
+                        try:
+                            self.statusBar().showMessage(f"Auto-selected logic: {os.path.basename(auto_logic)}", 4000)
+                        except Exception:
+                            pass
             except Exception:
                 pass
             # load register list if present
@@ -2650,9 +3483,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                             panel.on_connect()
                                     except Exception:
                                         pass
-                                    if attempt_idx < 8:
-                                        QtCore.QTimer.singleShot(600, lambda: apply_hittite_hw(attempt_idx + 1))
-                                    return
                                 # Post-connect settle delay on first configure
                                 if attempt_idx == 0:
                                     QtCore.QTimer.singleShot(500, lambda: apply_hittite_hw(attempt_idx + 1))
@@ -2804,6 +3634,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_scan_instruments(self):
         """Scan VISA resources and populate detected_combo with resources. Attempt to classify type by *IDN?"""
+        # Indicate scanning in the status bar while we work
+        try:
+            self.statusBar().showMessage('Scanning instruments please wait')
+        except Exception:
+            pass
         self.detected_combo.clear()
         import pyvisa
         import concurrent.futures
@@ -2909,9 +3744,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Show alias in the dropdown; store resource, type, and alias
                 self.detected_combo.addItem(alias_name, (res, inst_type, alias_name))
 
-        # Auto-select an alias profile that best matches current resources
+        # Apply aliasing choice from startup prompt
         try:
-            self._auto_select_alias_profile(resources)
+            mode = getattr(self, '_alias_startup_choice', '')
+            if mode == 'preconfigured' and getattr(self, 'alias_profile', ''):
+                # Keep the loaded profile; do not auto-select/override
+                pass
+            elif mode == 'generic':
+                # Build a generic alias map from detected resources
+                self._build_aliases_from_resources(resources)
+            else:
+                # Fallback behavior: auto-select the best matching profile
+                self._auto_select_alias_profile(resources)
         except Exception:
             pass
 
@@ -2921,7 +3765,62 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        self.statusBar().showMessage(f'Found {total_found} device(s)', 4000)
+        # Show found count briefly, then return to Ready
+        try:
+            self.statusBar().showMessage(f'Found {total_found} device(s)', 3000)
+            QtCore.QTimer.singleShot(3000, lambda: self.statusBar().showMessage('Ready'))
+        except Exception:
+            try:
+                self.statusBar().showMessage('Ready')
+            except Exception:
+                pass
+
+    def _prompt_alias_startup(self):
+        """Prompt user at startup to choose aliasing approach before any VISA scan."""
+        # Only prompt once per app run
+        if getattr(self, '_alias_prompt_done', False):
+            return
+        self._alias_prompt_done = True
+        # Simple dialog with two explicit choices
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle('Aliasing Profile')
+        box.setText('Choose an aliasing profile for this session:')
+        generic_btn = box.addButton('Generic (auto-suggest)', QtWidgets.QMessageBox.AcceptRole)
+        preconf_btn = box.addButton('Load preconfigured…', QtWidgets.QMessageBox.ActionRole)
+        box.setIcon(QtWidgets.QMessageBox.Question)
+        box.exec_()
+
+        clicked = box.clickedButton()
+        if clicked is preconf_btn:
+            # Let user pick from existing profiles
+            try:
+                profiles = self._list_alias_profiles() or []
+            except Exception:
+                profiles = []
+            if not profiles:
+                QtWidgets.QMessageBox.information(self, 'No profiles', 'No preconfigured profiles found. Using generic aliasing.')
+                self._alias_startup_choice = 'generic'
+            else:
+                name, ok = QtWidgets.QInputDialog.getItem(self, 'Load Profile', 'Select a profile:', profiles, 0, False)
+                if ok and name:
+                    try:
+                        self._load_alias_profile(name)
+                        self._alias_startup_choice = 'preconfigured'
+                    except Exception as e:
+                        QtWidgets.QMessageBox.warning(self, 'Load failed', f'Failed to load profile: {e}\nUsing generic instead.')
+                        self._alias_startup_choice = 'generic'
+                else:
+                    # Fallback to generic if user cancels selection
+                    self._alias_startup_choice = 'generic'
+        else:
+            # Default to generic
+            self._alias_startup_choice = 'generic'
+
+        # After choosing, kick off the first scan
+        try:
+            self.on_scan_instruments()
+        except Exception:
+            pass
 
     def on_add_selected_instrument(self):
         data = self.detected_combo.currentData()
@@ -2956,6 +3855,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.power_seq_builder.refresh_instr_combo()
 
     def closeEvent(self, event):
+        # Ensure all background recordings are stopped and workbook is saved before exit
+        try:
+            self._stop_all_recordings()
+        except Exception:
+            pass
         # close all panels to ensure instruments are closed
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
@@ -3260,6 +4164,13 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if not hasattr(self, 'logic_combo'):
                 return
+            # Preserve current selection
+            try:
+                prev_path = self.logic_combo.currentData()
+                prev_path = prev_path if isinstance(prev_path, str) else ''
+            except Exception:
+                prev_path = ''
+
             self.logic_combo.clear()
             self.logic_combo.addItem('(Select a logic file)', '')
             try:
@@ -3269,6 +4180,21 @@ class MainWindow(QtWidgets.QMainWindow):
             for f in sorted(files):
                 full = os.path.join(self.program_logic_dir, f)
                 self.logic_combo.addItem(f, full)
+            # If previously selected path is outside the logic dir, keep it if it still exists
+            if prev_path and os.path.exists(prev_path):
+                # Check if it's already present
+                found_idx = -1
+                for i in range(self.logic_combo.count()):
+                    if self.logic_combo.itemData(i) == prev_path:
+                        found_idx = i
+                        break
+                if found_idx == -1:
+                    # Add as custom entry
+                    self.logic_combo.addItem(os.path.basename(prev_path), prev_path)
+                    found_idx = self.logic_combo.count() - 1
+                # Restore selection
+                if found_idx != -1:
+                    self.logic_combo.setCurrentIndex(found_idx)
         except Exception:
             pass
 
@@ -3318,6 +4244,90 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             data = self.logic_combo.currentData()
             return data if isinstance(data, str) else ''
+        except Exception:
+            return ''
+
+    def _auto_select_logic_for_config(self, config_path: str, instruments: list, content: dict) -> str:
+        """Heuristically pick a programming logic .py in program_logic_dir based on
+        the config filename and instrument names/types. Returns full path or ''."""
+        try:
+            logic_dir = getattr(self, 'program_logic_dir', os.path.dirname(__file__))
+            try:
+                files = [f for f in os.listdir(logic_dir) if f.lower().endswith('.py')]
+            except Exception:
+                files = []
+            if not files:
+                return ''
+
+            def _norm(s: str) -> str:
+                return ''.join(ch for ch in str(s).lower() if ch.isalnum())
+
+            cfg_base = os.path.splitext(os.path.basename(config_path or ''))[0]
+            cfg_tok = _norm(cfg_base)
+            # 1) Prefer exact base-name match: product.json -> product.py (case-insensitive)
+            if cfg_base:
+                base_lower = cfg_base.lower()
+                for f in files:
+                    if os.path.splitext(f)[0].lower() == base_lower:
+                        return os.path.join(logic_dir, f)
+            tokens = set()
+            if cfg_tok:
+                tokens.add(cfg_tok)
+            # Add instrument names and types as tokens
+            try:
+                for ent in instruments or []:
+                    nm = ent.get('name') if isinstance(ent, dict) else None
+                    tp = ent.get('type') if isinstance(ent, dict) else None
+                    if nm:
+                        t = _norm(nm)
+                        if t:
+                            tokens.add(t)
+                    if tp:
+                        t = _norm(tp)
+                        if t:
+                            tokens.add(t)
+            except Exception:
+                pass
+            # Include any explicit part hint fields, if present
+            try:
+                for k in ('part', 'device', 'dut', 'design'):
+                    v = content.get(k)
+                    if v:
+                        t = _norm(v)
+                        if t:
+                            tokens.add(t)
+            except Exception:
+                pass
+
+            candidates = []  # (score, mtime, fullpath)
+            for f in files:
+                full = os.path.join(logic_dir, f)
+                base = os.path.splitext(f)[0]
+                bn = _norm(base)
+                try:
+                    mt = os.path.getmtime(full)
+                except Exception:
+                    mt = 0
+                score = 0
+                if bn and cfg_tok and bn == cfg_tok:
+                    score = 3  # exact match to config name
+                elif any(bn == t for t in tokens):
+                    score = 3  # exact token match
+                elif any((bn in t) or (t in bn) for t in tokens):
+                    score = 2  # partial contains
+                # else score remains 0
+                candidates.append((score, mt, full))
+
+            # Prefer highest score; break ties by newest mtime
+            candidates.sort(key=lambda x: (x[0], x[1]))
+            best = candidates[-1] if candidates else None
+            if best and best[0] > 0:
+                return best[2]
+            # As a gentle fallback, pick newest overall, but only if there is a single file
+            # or user likely expects auto-selection when only one logic exists.
+            if len(files) == 1:
+                return os.path.join(logic_dir, files[0])
+            return ''
         except Exception:
             return ''
 
