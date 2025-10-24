@@ -8,19 +8,19 @@
         "1": {
           "voltage": "5.0",
           "current": "0.8",
-          "output": true,
+          "output": false,
           "name": "5V"
         },
         "2": {
           "voltage": "3.3",
           "current": "0.8",
-          "output": true,
+          "output": false,
           "name": "3.3V_1 "
         },
         "3": {
           "voltage": "3.3",
           "current": "2.0",
-          "output": true,
+          "output": false,
           "name": "3.3V_2"
         }
       }
@@ -28,18 +28,18 @@
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
-      "name": "Hittite 0",
+      "name": "Hittite 0 REF_P",
       "settings": {
         "frequency": "125",
         "freq_unit": "MHz",
         "power": "0",
-        "output": true
+        "output": false
       }
     },
     {
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
-      "name": "FieldFox 0",
+      "name": "FieldFox 0 RFOUT1P",
       "settings": {
         "center": "20",
         "span": "10",

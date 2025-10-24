@@ -8,17 +8,20 @@
         "1": {
           "voltage": "1.5",
           "current": "0.1",
-          "output": true
+          "output": false,
+          "name": "1.5V"
         },
         "2": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": true
+          "output": false,
+          "name": "CH2"
         },
         "3": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": true
+          "output": false,
+          "name": "CH3"
         }
       }
     },
@@ -30,7 +33,7 @@
         "frequency": "10",
         "freq_unit": "GHz",
         "power": "-30",
-        "output": true
+        "output": false
       }
     },
     {

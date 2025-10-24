@@ -8,35 +8,27 @@
         "1": {
           "voltage": "3.3",
           "current": "0.8",
-          "output": false
+          "output": false,
+          "name": "3.3V"
         },
         "2": {
           "voltage": "2.5",
           "current": "0.8",
-          "output": false
+          "output": false,
+          "name": "2.5V"
         },
         "3": {
           "voltage": "2.5",
           "current": "2.0",
-          "output": false
+          "output": false,
+          "name": "Negative 2.5V"
         }
-      }
-    },
-    {
-      "type": "RhodeSchwarz SMA",
-      "resource": "alias:RohdeSchwarz SMA 1",
-      "name": "SMA100B",
-      "settings": {
-        "frequency": "3",
-        "freq_unit": "GHz",
-        "power": "0",
-        "output": false
       }
     },
     {
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
-      "name": "FieldFox",
+      "name": "FieldFox RF Out",
       "settings": {
         "center": "3",
         "span": "6",
@@ -44,11 +36,22 @@
         "stop": "",
         "unit": "GHz"
       }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0 RF_IN",
+      "settings": {
+        "frequency": "3",
+        "freq_unit": "GHz",
+        "power": "0",
+        "output": false
+      }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "",
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
   "register_read_array": [
     0,
     1,
