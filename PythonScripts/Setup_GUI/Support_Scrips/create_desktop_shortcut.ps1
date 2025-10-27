@@ -4,8 +4,9 @@ $ErrorActionPreference = 'Stop'
 $thisDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $thisDir '..\\..\\..\\..')
 
+# Desktop shortcut name and path
 $desktop = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktop 'Rad Effects Setup GUI.lnk'
+$shortcutPath = Join-Path $desktop 'Setup_GUI.lnk'
 # Prefer launching setup_gui.py via pythonw.exe directly (no console window)
 $pythonw = 'C:\\Program Files\\Python313\\pythonw.exe'
 if (-not (Test-Path $pythonw)) {
@@ -27,7 +28,14 @@ $sc = $shell.CreateShortcut($shortcutPath)
 $sc.TargetPath = $pythonw
 $sc.Arguments = '"' + $guiScript + '"'
 $sc.WorkingDirectory = $repoRoot.ToString()
-$sc.IconLocation = "$pythonw,0"
+$iconFile = Join-Path $thisDir 'Shortcut Icon.ico'
+if (Test-Path $iconFile) {
+    # Use the provided ICO file for the shortcut icon
+    $sc.IconLocation = "$iconFile,0"
+} else {
+    # Fallback to pythonw.exe icon if the ICO isn't present
+    $sc.IconLocation = "$pythonw,0"
+}
 $sc.Description = 'Launch Rad Effects Setup GUI'
 $sc.WindowStyle = 1  # Normal window
 $sc.Save()
