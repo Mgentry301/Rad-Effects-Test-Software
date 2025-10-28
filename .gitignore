@@ -1,2 +1,3 @@
 /PythonScripts/Setup_GUI/Support_Scrips/__pycache__
 /PythonScripts/Setup_GUI/Support_Scrips/Front_Panels/__pycache__
+*.pyc

@@ -42,7 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if on:
                     V = float(panel.vol_edits[ch].text())
                     I = float(panel.iam_edits[ch].text())
-                    panel.inst.set_voltage(ch, V)
+                    panel.inst.set_voltage(ch, V) 
                     panel.inst.set_current(ch, I)
                     panel.inst.set_output(ch, True)
                     panel.output_btns[ch].setChecked(True)
