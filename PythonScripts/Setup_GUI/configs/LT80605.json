@@ -1,0 +1,54 @@
+{
+  "instruments": [
+    {
+      "type": "Keysight EL34243A",
+      "resource": "alias:Keysight EL 0",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CR",
+          "value": "0.65",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "18",
+          "current": "6.0",
+          "output": false,
+          "name": "CH1"
+        },
+        "2": {
+          "voltage": "0",
+          "current": "0",
+          "output": false,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_logic_path": "",
+  "register_read_array": []
+}
