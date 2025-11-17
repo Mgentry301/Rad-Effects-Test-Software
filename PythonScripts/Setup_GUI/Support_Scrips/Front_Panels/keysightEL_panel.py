@@ -88,6 +88,12 @@ class KeysightELPanel(QtWidgets.QWidget):
         self.meas_current_ch1.setFont(f1)
         ch_grid.addWidget(self.meas_voltage_ch1, 1, 5)
         ch_grid.addWidget(self.meas_current_ch1, 1, 6)
+        # Ramp controls for Channel 1
+        ch_grid.addWidget(QtWidgets.QLabel('Rise Time (s)'), 1, 7)
+        self.rise_time_ch1 = QtWidgets.QLineEdit('0')
+        ch_grid.addWidget(self.rise_time_ch1, 1, 8)
+        self.ramp_enable_ch1 = QtWidgets.QCheckBox('Enable Ramp')
+        ch_grid.addWidget(self.ramp_enable_ch1, 1, 9)
 
         # Channel 2 row
         ch_grid.addWidget(QtWidgets.QLabel('Ch 2'), 2, 0)

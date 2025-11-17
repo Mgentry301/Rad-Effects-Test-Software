@@ -12,6 +12,7 @@
     "RohdeSchwarz SMA 1": "GPIB0::28::INSTR",
     "RohdeSchwarz SMA 2": "GPIB0::7::INSTR",
     "Hittite 0": "GPIB0::16::INSTR",
-    "Hittite 1": "GPIB0::12::INSTR"
+    "Hittite 1": "GPIB0::12::INSTR",
+    "Keysight EL 0": "USB0::0x2A8D::0x3902::MY61002154::INSTR"
   }
 }

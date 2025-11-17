@@ -42,7 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if on:
                     V = float(panel.vol_edits[ch].text())
                     I = float(panel.iam_edits[ch].text())
-                    panel.inst.set_voltage(ch, V)
+                    panel.inst.set_voltage(ch, V) 
                     panel.inst.set_current(ch, I)
                     panel.inst.set_output(ch, True)
                     panel.output_btns[ch].setChecked(True)
@@ -118,6 +118,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 panel.status_label.setText('Output ON' if on else 'Output OFF')
         except Exception:
             pass
+    
     def on_record_clicked(self):
         """Unified record button: start/stop recording for selected metrics."""
         # If not primed yet, behave like legacy flow: ask path and start now
@@ -905,7 +906,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._register_thread = threading.Thread(target=worker, daemon=True)
         self._register_thread.start()
 
-    # --- Shared Excel helpers ---
     def _excel_open_locked(self, excel_path: str):
         """Open or return a cached workbook for this session. Caller must hold _excel_lock."""
         try:
@@ -2024,10 +2024,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.alias_profile = ''
         self.alias_map = {}
         # programming logic directory (external logic files for Configure Part)
+        # Force-resolve to <repo>/PythonScripts/programming logics to avoid accidental Support_Scrips pathing
         try:
-            self.program_logic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'programming logics')
+            # repo_root -> two levels up from Setup_GUI
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            python_scripts_dir = os.path.join(repo_root, 'PythonScripts')
+            self.program_logic_dir = os.path.join(python_scripts_dir, 'programming logics')
             os.makedirs(self.program_logic_dir, exist_ok=True)
+            # Fallbacks if expected structure is not present
+            if not os.path.isdir(self.program_logic_dir):
+                self.program_logic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'programming logics')
+                os.makedirs(self.program_logic_dir, exist_ok=True)
         except Exception:
+            # Final fallback: current module directory
             self.program_logic_dir = os.path.dirname(__file__)
         self.setWindowTitle("Instrument Controller - Multiple Instruments")
         central = QtWidgets.QWidget()
@@ -2353,11 +2362,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def refresh_configs_list(self):
         self.load_combo.clear()
-        files = [f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')]
+        # Add placeholder entry first
+        placeholder = '---Config List--'
+        self.load_combo.addItem(placeholder, None)
+        # Populate available configs (sorted for stability)
+        files = sorted([f for f in os.listdir(self.configs_dir) if f.lower().endswith('.json')])
         for f in files:
-            self.load_combo.addItem(f)
-        if files:
-            self.load_combo.setCurrentIndex(0)
+            full = os.path.join(self.configs_dir, f)
+            self.load_combo.addItem(f, full)
+        # Default to placeholder regardless of files present
+        self.load_combo.setCurrentIndex(0)
         # Also refresh alias profiles list in Settings tab
         try:
             if hasattr(self, 'alias_profile_combo'):
@@ -3086,11 +3100,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def load_config_dialog(self):
         # Load config from selected file in dropdown
-        fname = self.load_combo.currentText()
-        if not fname:
+        data = self.load_combo.currentData()
+        text = self.load_combo.currentText()
+        # Guard against placeholder or empty selection
+        if (data is None) or (not text) or text.startswith('---'):
             QtWidgets.QMessageBox.information(self, 'No config', 'No config file selected.')
             return
-        path = os.path.join(self.configs_dir, fname)
+        path = str(data)
         self.load_config(path)
 
     def load_config(self, path):
