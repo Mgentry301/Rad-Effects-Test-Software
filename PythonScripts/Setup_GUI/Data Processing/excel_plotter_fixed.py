@@ -35,9 +35,10 @@ class ExcelPlotter(QtWidgets.QMainWindow):
         self.capture_mode = False
         self.freq_axis: Optional[List[float]] = None
         self._ts_series: List[str] = []
-        self.pages: List[QtWidgets.QWidget] = []
         # default export DPI (fixed): use very high DPI for raster fallback
         self.export_dpi = 32768
+        # track hex-converted columns for 'flag changing registers' feature
+        self._hex_converted_cols: List[str] = []
 
         self._build_ui()
 
@@ -100,6 +101,11 @@ class ExcelPlotter(QtWidgets.QMainWindow):
         self.legend_chk = QtWidgets.QCheckBox('Legend')
         self.legend_chk.setChecked(False)
         hl.addWidget(self.legend_chk)
+        self.select_changing_btn = QtWidgets.QPushButton('Select Changing Registers')
+        self.select_changing_btn.setEnabled(False)
+        self.select_changing_btn.setToolTip('Select register columns (*_dec) that change values during the run')
+        self.select_changing_btn.clicked.connect(self.on_select_changing_registers)
+        hl.addWidget(self.select_changing_btn)
         self.names_btn = QtWidgets.QPushButton('Names...')
         self.names_btn.setToolTip('Edit series/timestamp display names for the legend')
         self.names_btn.clicked.connect(self.open_names_dialog)
@@ -156,9 +162,6 @@ class ExcelPlotter(QtWidgets.QMainWindow):
         self.lines_btn.setToolTip('Manage reference lines (horizontal / vertical)')
         self.lines_btn.clicked.connect(self.open_lines_dialog)
         sbh.addWidget(self.lines_btn)
-        self.add_to_layout_btn = QtWidgets.QPushButton('Add to layout')
-        self.add_to_layout_btn.clicked.connect(self.add_current_plot_to_layout)
-        sbh.addWidget(self.add_to_layout_btn)
         # Save / Load format buttons (save current plot 'template' and apply to other data)
         self.save_fmt_btn = QtWidgets.QPushButton('Save Format')
         self.save_fmt_btn.setToolTip('Save current plot format (columns, labels, lines, axis limits)')
@@ -192,52 +195,6 @@ class ExcelPlotter(QtWidgets.QMainWindow):
         self.desired_ylim = None
 
         tabs.addTab(graph_tab, 'Graphing')
-
-        # Layout tab (simple)
-        layout_tab = QtWidgets.QWidget()
-        l_v = QtWidgets.QVBoxLayout(layout_tab)
-        top2 = QtWidgets.QWidget()
-        tlh = QtWidgets.QHBoxLayout(top2)
-        btn_add_page = QtWidgets.QPushButton('Add Page')
-        btn_add_page.clicked.connect(self.add_page)
-        tlh.addWidget(btn_add_page)
-        btn_add_text = QtWidgets.QPushButton('Add Text')
-        btn_add_text.clicked.connect(self.add_textbox_to_page)
-        tlh.addWidget(btn_add_text)
-        tlh.addStretch()
-        btn_export = QtWidgets.QPushButton('Export PDF')
-        btn_export.clicked.connect(self.export_layout_pdf)
-        tlh.addWidget(btn_export)
-        l_v.addWidget(top2)
-
-        main_h = QtWidgets.QHBoxLayout()
-        l_v.addLayout(main_h)
-        left = QtWidgets.QFrame()
-        left.setFixedWidth(180)
-        left.setStyleSheet('background:#efefef')
-        lv = QtWidgets.QVBoxLayout(left)
-        lv.addWidget(QtWidgets.QLabel('Pages'))
-        self.page_select = QtWidgets.QComboBox()
-        self.page_select.currentIndexChanged.connect(self.on_page_changed)
-        lv.addWidget(self.page_select)
-        lv.addStretch()
-        main_h.addWidget(left)
-        center = QtWidgets.QFrame()
-        center.setStyleSheet('background:#9f9f9f')
-        cv = QtWidgets.QVBoxLayout(center)
-        self.pages_area = QtWidgets.QStackedWidget()
-        cv.addWidget(self.pages_area)
-        main_h.addWidget(center, 1)
-        right = QtWidgets.QFrame()
-        right.setFixedWidth(260)
-        right.setStyleSheet('background:#efefef')
-        rv = QtWidgets.QVBoxLayout(right)
-        rv.addWidget(QtWidgets.QLabel('Selected Item'))
-        self.prop_label = QtWidgets.QLabel('(none)')
-        rv.addWidget(self.prop_label)
-        rv.addStretch()
-        main_h.addWidget(right)
-        tabs.addTab(layout_tab, 'Layout')
 
         self.setStatusBar(QtWidgets.QStatusBar(self))
 
@@ -273,10 +230,8 @@ class ExcelPlotter(QtWidgets.QMainWindow):
                 except Exception: self._ts_series=[]
             else:
                 self.capture_mode=False; self.freq_axis=None; self._ts_series=[]
-            cols = list(df.columns.astype(str))
-            self.x_combo.clear(); self.x_combo.addItems(cols)
-            # populate the multi-select list with available columns
-            self.y_list.clear(); self.y_list.addItems(cols)
+            # we'll populate the X/Y selectors after performing runtime column additions
+            # (e.g., Noise_Floor_Median for capture data and automatic hex->decimal conversions)
 
             # If this looks like capture data, compute and attach a per-row noise-floor median
             if self.capture_mode:
@@ -284,12 +239,62 @@ class ExcelPlotter(QtWidgets.QMainWindow):
                     median_vals = self._compute_noise_floor_median_per_row(df)
                     df['Noise_Floor_Median'] = median_vals
                     # ensure the GUI list includes the new column so it's immediately graphable
-                    existing = [self.y_list.item(i).text() for i in range(self.y_list.count())]
-                    if 'Noise_Floor_Median' not in existing:
-                        self.y_list.addItem('Noise_Floor_Median')
+                    # we'll add this when populating the selector lists below
                 except Exception:
                     # don't block loading if noise computation fails
                     pass
+
+            # Auto-convert columns that look like hexadecimal register reads into decimal columns.
+            # Heuristic: if at least ~60% of non-empty entries in a column match hex pattern (optionally
+            # prefixed with 0x) and there are at least 3 non-empty entries, create a new column named
+            # '<col>_dec' containing the converted integers (or NA on parse failure).
+            try:
+                hex_converted = []
+                for col in list(df.columns):
+                    try:
+                        ser = df[col].astype(str).fillna('').str.strip()
+                        non_empty = ser[ser != '']
+                        if len(non_empty) < 3:
+                            continue
+                        matches = non_empty.str.match(r'^(?:0x)?[0-9A-Fa-f]+$')
+                        if float(matches.sum()) / float(len(non_empty)) >= 0.6:
+                            # perform conversion for the full column
+                            def _to_dec(v):
+                                try:
+                                    s = str(v).strip()
+                                    if s == '' or s.lower() in ('nan', 'none'):
+                                        return pd.NA
+                                    if s.lower().startswith('0x'):
+                                        s2 = s[2:]
+                                    else:
+                                        s2 = s
+                                    return int(s2, 16)
+                                except Exception:
+                                    return pd.NA
+
+                            df[f"{col}_dec"] = df[col].apply(_to_dec)
+                            hex_converted.append(col)
+                    except Exception:
+                        continue
+                if hex_converted:
+                    try:
+                        self.set_status(f"Converted hex columns to *_dec: {', '.join(hex_converted)}", 4000)
+                    except Exception:
+                        pass
+                # store converted column names and enable the select changing registers button
+                self._hex_converted_cols = [f"{c}_dec" for c in hex_converted]
+                try:
+                    self.select_changing_btn.setEnabled(len(self._hex_converted_cols) > 0)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # now populate the X/Y selectors with the (possibly expanded) column list
+            cols = list(df.columns.astype(str))
+            self.x_combo.clear(); self.x_combo.addItems(cols)
+            # populate the multi-select list with available columns
+            self.y_list.clear(); self.y_list.addItems(cols)
 
             # choose the appropriate Y selector based on plot type
             if self.capture_mode and self.plot_type_combo.currentText().lower()=='fft' and self._ts_series:
@@ -313,6 +318,85 @@ class ExcelPlotter(QtWidgets.QMainWindow):
                 cols=list(self.current_df.columns.astype(str)); self.y_list.clear(); self.y_list.addItems(cols)
             self.y_selector_stack.setCurrentIndex(1)
             self.x_combo.setEnabled(True)
+
+    def on_select_changing_registers(self):
+        """Select only the hex-converted register columns that have changing values within a time range."""
+        if self.current_df is None or not self._hex_converted_cols:
+            return
+        
+        try:
+            # Determine the time/index column (use current X column selection as default)
+            x_col = self.x_combo.currentText()
+            if not x_col or x_col not in self.current_df.columns:
+                # fallback to first column if X is not selected
+                x_col = self.current_df.columns[0] if len(self.current_df.columns) > 0 else None
+            
+            if x_col is None:
+                QtWidgets.QMessageBox.warning(self, 'No time column', 'Cannot determine time/index column for filtering')
+                return
+            
+            # Get the time range from the selected column
+            try:
+                time_series = pd.to_numeric(self.current_df[x_col], errors='coerce')
+                if time_series.isna().all():
+                    # try datetime parsing
+                    time_series = pd.to_datetime(self.current_df[x_col], errors='coerce')
+                    if time_series.notna().any():
+                        # convert to elapsed seconds from first timestamp
+                        first = time_series.dropna().iloc[0]
+                        time_series = (time_series - first).dt.total_seconds()
+                
+                valid_times = time_series.dropna()
+                if len(valid_times) == 0:
+                    QtWidgets.QMessageBox.warning(self, 'No valid times', f'Column {x_col} has no valid numeric/datetime values')
+                    return
+                
+                time_min = float(valid_times.min())
+                time_max = float(valid_times.max())
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(self, 'Time parsing failed', f'Could not parse time column {x_col}: {e}')
+                return
+            
+            # Show dialog to get time range from user
+            dlg = TimeRangeDialog(self, time_min, time_max, x_col)
+            if dlg.exec_() != QtWidgets.QDialog.Accepted:
+                return
+            
+            start_time, end_time = dlg.get_range()
+            
+            # Filter DataFrame to the selected time range
+            mask = (time_series >= start_time) & (time_series <= end_time)
+            df_filtered = self.current_df[mask]
+            
+            if len(df_filtered) == 0:
+                QtWidgets.QMessageBox.warning(self, 'Empty range', 'No data points in the selected time range')
+                return
+            
+            # Determine which *_dec columns have changing values in the filtered range
+            changing_cols = []
+            for col in self._hex_converted_cols:
+                if col not in df_filtered.columns:
+                    continue
+                try:
+                    # drop NA and get unique values in the filtered range
+                    unique_vals = df_filtered[col].dropna().unique()
+                    if len(unique_vals) > 1:
+                        changing_cols.append(col)
+                except Exception:
+                    continue
+            
+            # Select (highlight) these columns in the Y-list
+            for i in range(self.y_list.count()):
+                item = self.y_list.item(i)
+                item.setSelected(item.text() in changing_cols)
+            
+            # Show status
+            if changing_cols:
+                self.set_status(f"Selected {len(changing_cols)} changing register(s) in range [{start_time:.3g}, {end_time:.3g}]: {', '.join(changing_cols)}", 5000)
+            else:
+                self.set_status(f"No changing registers found in range [{start_time:.3g}, {end_time:.3g}] (all have constant values)", 3000)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, 'Select changing failed', str(e))
 
     def _infer_freq_axis_from_headers(self,df:pd.DataFrame) -> Optional[List[float]]:
         headers = list(df.columns.astype(str))[1:]
@@ -1653,145 +1737,6 @@ class ExcelPlotter(QtWidgets.QMainWindow):
         except Exception as e:
             QtWidgets.QMessageBox.warning(self,'Save failed',str(e))
 
-    def add_page(self):
-        page = PageWidget()
-        wrapper = QtWidgets.QScrollArea(); wrapper.setWidgetResizable(False); wrapper.setWidget(page)
-        page._items = []
-        self.pages.append(page); self.pages_area.addWidget(wrapper); self.page_select.addItem(f'Page {len(self.pages)}'); self.pages_area.setCurrentWidget(wrapper)
-        self.page_select.setCurrentIndex(len(self.pages)-1)
-
-    def on_page_changed(self, idx:int):
-        if 0<=idx<len(self.pages): self.pages_area.setCurrentIndex(idx)
-
-    def add_current_plot_to_layout(self):
-        if self.fig is None: QtWidgets.QMessageBox.warning(self,'No plot','There is no current plot to add'); return
-        wrapper = self.pages_area.currentWidget();
-        if wrapper is None: QtWidgets.QMessageBox.warning(self,'No page','Create or select a page in Layout first'); return
-        page = wrapper.widget() if isinstance(wrapper,QtWidgets.QScrollArea) else wrapper
-        try:
-            buf=BytesIO(); self.fig.savefig(buf,dpi=150,bbox_inches='tight'); data=buf.getvalue(); pix=QPixmap(); pix.loadFromData(data)
-            img = MovableLabel(parent=page, metadata={'source_path':self.current_path,'sheet':self.sheet_combo.currentText(),'plot_type':self.plot_type_combo.currentText(),'x_col':self.x_combo.currentText(),'y_col':self.y_combo.currentText(),'x_label':self.x_label_edit.text(),'y_label':self.y_label_edit.text()})
-            img.setPixmap(pix.scaledToWidth(500,QtCore.Qt.SmoothTransformation)); img.adjustSize(); page.add_item(img); page._items.append(('image',data,img.metadata)); self.set_status('Added plot to layout',2000)
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(self,'Add failed',str(e))
-
-    def add_textbox_to_page(self):
-        page_wrapper = self.pages_area.currentWidget()
-        if page_wrapper is None: QtWidgets.QMessageBox.warning(self,'No page','Create or select a page in Layout first'); return
-        page = page_wrapper.widget() if isinstance(page_wrapper,QtWidgets.QScrollArea) else page_wrapper
-        text,ok = QtWidgets.QInputDialog.getMultiLineText(self,'Add text','Enter text:')
-        if not ok or not text: return
-        lbl = MovableText(text,parent=page,metadata={'type':'text','text':text}); page.add_item(lbl); page._items.append(('text',text,lbl.metadata)); self.set_status('Added text box to page',2000)
-
-    def export_layout_pdf(self):
-        path,_ = QtWidgets.QFileDialog.getSaveFileName(self,'Export layout to PDF','','PDF Files (*.pdf)')
-        if not path: return
-        try:
-            self.export_layout_pdf_highdpi(path,dpi=self.export_dpi); self.set_status(f'Exported PDF: {path}',5000)
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(self,'Export failed',str(e))
-
-    def export_layout_pdf_highdpi(self,path:str,dpi:int=32768):
-        # Render pages directly to the QPrinter painter to avoid allocating huge raster images
-        printer = QPrinter(QPrinter.HighResolution)
-        printer.setOutputFormat(QPrinter.PdfFormat)
-        printer.setOutputFileName(path)
-        printer.setPageSize(QPrinter.A4)
-        # Ensure the printer raster resolution matches the requested DPI for high-quality raster fallback
-        try:
-            printer.setResolution(int(dpi))
-        except Exception:
-            # some Qt bindings/platforms may ignore or restrict resolution changes
-            pass
-
-        painter = QPainter()
-        if not painter.begin(printer):
-            raise RuntimeError('Failed to begin PDF writer')
-
-        # Printable area in device units
-        page_rect = printer.pageRect()
-
-        for i, page in enumerate(self.pages):
-            # Render the page at its native widget pixel size to a small image
-            w = max(1, page.width())
-            h = max(1, page.height())
-            img = QImage(w, h, QImage.Format_ARGB32)
-            img.fill(QColor('white'))
-            pw = QPainter(img)
-            page.render(pw)
-            pw.end()
-
-            # Draw the image scaled to the printable area on the PDF; the printer will rasterize
-            target = QtCore.QRectF(page_rect)
-            source = QtCore.QRectF(0, 0, w, h)
-            painter.drawImage(target, img, source)
-
-            if i < len(self.pages) - 1:
-                printer.newPage()
-
-        painter.end()
-
-
-class MovableLabel(QtWidgets.QLabel):
-    def __init__(self,parent=None,metadata:Optional[dict]=None):
-        super().__init__(parent)
-        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
-        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._on_context)
-        self._dragging=False; self._last_pos=None
-        self.metadata=metadata or {}
-
-    def mousePressEvent(self,ev):
-        if ev.button()==QtCore.Qt.LeftButton:
-            self._dragging=True; self._last_pos=ev.globalPos(); ev.accept()
-        else:
-            super().mousePressEvent(ev)
-
-    def mouseMoveEvent(self,ev):
-        if self._dragging and self._last_pos is not None:
-            delta=ev.globalPos()-self._last_pos; self.move(self.x()+delta.x(),self.y()+delta.y()); self._last_pos=ev.globalPos(); ev.accept()
-        else:
-            super().mouseMoveEvent(ev)
-
-    def mouseReleaseEvent(self,ev):
-        if ev.button()==QtCore.Qt.LeftButton:
-            self._dragging=False; self._last_pos=None; ev.accept()
-        else:
-            super().mouseReleaseEvent(ev)
-
-    def _on_context(self,pos):
-        menu=QtWidgets.QMenu(self); edit_act=menu.addAction('Edit in Graph'); del_act=menu.addAction('Delete'); act=menu.exec_(self.mapToGlobal(pos))
-        if act==edit_act:
-            top=self.window();
-            if hasattr(top,'load_plot_metadata_from_item'):
-                top.load_plot_metadata_from_item(self.metadata)
-        elif act==del_act:
-            self.close()
-
-
-class MovableText(MovableLabel):
-    def __init__(self,text:str,parent=None,metadata:Optional[dict]=None):
-        super().__init__(parent,metadata)
-        self.setText(text)
-        self.setWordWrap(True)
-        self.setStyleSheet('background:transparent;border:1px dashed #ccc;padding:6px;')
-        self.adjustSize()
-
-
-class PageWidget(QtWidgets.QWidget):
-    def __init__(self,width_px=794,height_px=1123,parent=None):
-        super().__init__(parent)
-        self.setFixedSize(width_px,height_px)
-        self.setStyleSheet('background:white;border:1px solid #888;')
-
-    def add_item(self,widget:QtWidgets.QWidget,pos:Optional[QtCore.QPoint]=None):
-        widget.setParent(self)
-        if pos is None:
-            widget.move(12,12+len(self.findChildren(MovableLabel))*110)
-        else:
-            widget.move(pos)
-        widget.show()
-
 
 class ReferenceLinesDialog(QtWidgets.QDialog):
     """Dialog to add/remove horizontal and vertical reference lines.
@@ -2337,6 +2282,59 @@ class MapAllDialog(QtWidgets.QDialog):
             if val and val != '<none>':
                 out[name] = val
         return out
+
+
+class TimeRangeDialog(QtWidgets.QDialog):
+    """Dialog to select a time range for filtering changing registers.
+    
+    Shows start and end time fields pre-filled with the full data range.
+    User can adjust to a shorter range if desired.
+    """
+    def __init__(self, parent: QtWidgets.QWidget, time_min: float, time_max: float, time_col_name: str):
+        super().__init__(parent)
+        self.setWindowTitle('Select Time Range')
+        self.setModal(True)
+        
+        v = QtWidgets.QVBoxLayout(self)
+        
+        # Info label
+        info = QtWidgets.QLabel(f"Select time range from column '{time_col_name}' to check for changing registers:")
+        info.setWordWrap(True)
+        v.addWidget(info)
+        
+        # Form for start/end times
+        form = QtWidgets.QWidget()
+        fl = QtWidgets.QFormLayout(form)
+        
+        self.start_spin = QtWidgets.QDoubleSpinBox()
+        self.start_spin.setRange(-1e15, 1e15)
+        self.start_spin.setDecimals(6)
+        self.start_spin.setValue(time_min)
+        fl.addRow(QtWidgets.QLabel('Start time:'), self.start_spin)
+        
+        self.end_spin = QtWidgets.QDoubleSpinBox()
+        self.end_spin.setRange(-1e15, 1e15)
+        self.end_spin.setDecimals(6)
+        self.end_spin.setValue(time_max)
+        fl.addRow(QtWidgets.QLabel('End time:'), self.end_spin)
+        
+        v.addWidget(form)
+        
+        # Buttons
+        btns = QtWidgets.QWidget()
+        bh = QtWidgets.QHBoxLayout(btns)
+        bh.addStretch()
+        ok = QtWidgets.QPushButton('OK')
+        ok.clicked.connect(self.accept)
+        bh.addWidget(ok)
+        cancel = QtWidgets.QPushButton('Cancel')
+        cancel.clicked.connect(self.reject)
+        bh.addWidget(cancel)
+        v.addWidget(btns)
+    
+    def get_range(self):
+        """Return (start_time, end_time) tuple."""
+        return (float(self.start_spin.value()), float(self.end_spin.value()))
 
 
 if __name__ == '__main__':
