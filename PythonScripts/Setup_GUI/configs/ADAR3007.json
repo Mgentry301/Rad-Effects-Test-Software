@@ -28,29 +28,90 @@
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
-      "name": "Hittite 0",
+      "name": "Hittite 0 RFIN",
       "settings": {
         "frequency": "11",
         "freq_unit": "GHz",
         "power": "-13.7",
-        "output": false
+        "output": true
       }
     },
     {
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
-      "name": "FieldFox 0",
+      "name": "FieldFox 0 RFOUT",
       "settings": {
-        "center": "7",
-        "span": "14",
+        "center": "10",
+        "span": "18",
         "start": "",
         "stop": "",
         "unit": "GHz"
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CC",
+          "value": "10000",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "Beam"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "CH3"
+        }
       }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\HMC7044.py",
-  "register_read_array": [0,1,10,18,19,20,32,48,49,50,51,52,53,54]
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADAR3007.py",
+  "register_read_array": [
+    0,
+    1,
+    10,
+    18,
+    19,
+    20,
+    32,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54
+  ]
 }

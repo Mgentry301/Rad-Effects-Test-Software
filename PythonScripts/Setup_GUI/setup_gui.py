@@ -294,7 +294,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._header = self._build_header(panels)
 
             def _build_header(self, panels):
-                header = ['timestamp']
+                # Build header to match row order: timestamp, all voltages (all panels), then all currents (all panels)
+                ts = ['timestamp']
+                v_headers = []
+                i_headers = []
                 for p in panels:
                     try:
                         tab_idx = self_parent.tabs.indexOf(p)
@@ -312,11 +315,26 @@ class MainWindow(QtWidgets.QMainWindow):
                         ch_names = [f'CH{i}' for i in (1, 2)]
                     for i in range(1, ch_count + 1):
                         nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
-                        header.append(f'{alias_name}_{nm}_V')
+                        v_headers.append(f'{alias_name}_{nm}_V')
+                for p in panels:
+                    try:
+                        tab_idx = self_parent.tabs.indexOf(p)
+                        alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
+                    except Exception:
+                        alias_name = getattr(p, 'resource', 'Supply')
+                    if p.__class__.__name__.startswith('Keithley'):
+                        ch_count = 3
+                        try:
+                            ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1, 2, 3)]
+                        except Exception:
+                            ch_names = [f'CH{i}' for i in (1, 2, 3)]
+                    else:
+                        ch_count = 2
+                        ch_names = [f'CH{i}' for i in (1, 2)]
                     for i in range(1, ch_count + 1):
                         nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
-                        header.append(f'{alias_name}_{nm}_I')
-                return header
+                        i_headers.append(f'{alias_name}_{nm}_I')
+                return ts + v_headers + i_headers
 
             def start(self):
                 import threading, time
@@ -952,7 +970,11 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
 
     def _excel_save_locked(self, force: bool = False):
-        """Save cached workbook to working file, and snapshot atomically to final occasionally. Caller holds _excel_lock."""
+        """Save cached workbook to working file, and snapshot atomically to final.
+        Caller holds _excel_lock.
+        Policy: write working file frequently; snapshot final at least every 2.5 minutes
+        to keep the final XLSX current and mitigate oversized working files.
+        """
         try:
             import time, os, shutil
             wb = getattr(self, '_excel_wb', None)
@@ -971,16 +993,9 @@ class MainWindow(QtWidgets.QMainWindow):
             fpath = getattr(self, '_excel_final_path', None)
             if fpath:
                 last_snap = getattr(self, '_excel_last_snapshot', 0.0)
-                # Snapshot no more than ~every 30s during run, or immediately if forced.
-                snapshot_interval = 30.0
-                # Avoid snapshotting while large write queues are pending to reduce churn on big runs
-                pending_ok = True
-                try:
-                    total_pending = self._get_total_pending_writes()
-                    pending_ok = (total_pending <= 100)
-                except Exception:
-                    pending_ok = True
-                if force or ((now - last_snap) >= snapshot_interval and pending_ok):
+                # Snapshot at least every 150s (2.5 minutes), or immediately if forced.
+                snapshot_interval = 150.0
+                if force or ((now - last_snap) >= snapshot_interval):
                     tmp_final = fpath + '.tmp'
                     # Write a copy of working to tmp, then replace final
                     try:

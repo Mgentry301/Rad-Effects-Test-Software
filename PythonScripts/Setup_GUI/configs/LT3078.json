@@ -1,0 +1,54 @@
+{
+  "instruments": [
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CR",
+          "value": "0.2",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CR",
+          "value": "0.1",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "2.65",
+          "current": "6.0",
+          "output": true,
+          "name": "VIN"
+        },
+        "2": {
+          "voltage": "2.8",
+          "current": "0.2",
+          "output": true,
+          "name": "VBIAS"
+        },
+        "3": {
+          "voltage": "2.5",
+          "current": "0.2",
+          "output": true,
+          "name": "ENABLE"
+        }
+      }
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
+  "register_read_array": []
+}

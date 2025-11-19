@@ -8,19 +8,19 @@
         "1": {
           "voltage": "3.3",
           "current": "0.2",
-          "output": false,
+          "output": true,
           "name": "3.3V"
         },
         "2": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": false,
+          "output": true,
           "name": "CH2"
         },
         "3": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": false,
+          "output": true,
           "name": "CH3"
         }
       }
@@ -33,7 +33,7 @@
         "frequency": "10",
         "freq_unit": "GHz",
         "power": "-15",
-        "output": false
+        "output": true
       }
     },
     {
@@ -42,7 +42,7 @@
       "name": "FieldFox 0",
       "settings": {
         "center": "10",
-        "span": "20",
+        "span": "5",
         "start": "",
         "stop": "",
         "unit": "GHz"

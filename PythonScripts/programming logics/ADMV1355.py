@@ -3,3 +3,4 @@ def logic(client):
     client.ContextPath = "\System\Subsystem_1\ADMV1355 Board\ADMV1355"
     client.NavigateToPath("Root::System.Subsystem_1.ADMV1355 Board.ADMV1355")
     client.Run("@Reset")
+    client.Run("@HYB_LB_Init")

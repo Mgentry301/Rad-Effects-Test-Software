@@ -2,18 +2,18 @@
   "instruments": [
     {
       "type": "Keysight EL34243A",
-      "resource": "alias:Keysight EL 0",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
       "name": "Keysight EL 0",
       "channels": {
         "1": {
           "mode": "CR",
-          "value": "0.65",
-          "input": false,
+          "value": "0.63",
+          "input": true,
           "ramp_enabled": false,
           "rise_time": "0"
         },
         "2": {
-          "mode": "CC",
+          "mode": "CR",
           "value": "0.1",
           "input": false,
           "ramp_enabled": false,
@@ -27,28 +27,28 @@
       "name": "Keithley 0",
       "channels": {
         "1": {
-          "voltage": "18",
+          "voltage": "19",
           "current": "6.0",
-          "output": false,
-          "name": "CH1"
+          "output": true,
+          "name": "VIN_half"
         },
         "2": {
-          "voltage": "0",
-          "current": "0",
-          "output": false,
-          "name": "CH2"
+          "voltage": "19",
+          "current": "6.0",
+          "output": true,
+          "name": "VIN_dut"
         },
         "3": {
-          "voltage": "0",
-          "current": "0.0",
-          "output": false,
-          "name": "CH3"
+          "voltage": "3.3",
+          "current": "0.1",
+          "output": true,
+          "name": "EN"
         }
       }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "",
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
   "register_read_array": []
 }

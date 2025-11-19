@@ -41,6 +41,13 @@ class FieldFoxSA:
             self._opc_wait(timeout_ms=1000)
             # Set binary little-endian data format
             self._safe_write(":FORM:DATA REAL,32")
+            # Set sweep points to 100 as requested
+            try:
+                self._safe_write(":SENS:SWE:POIN 100")
+                # Verify (non-fatal if it fails)
+                _ = self._safe_query(":SENS:SWE:POIN?", retries=2, timeout_ms=1000)
+            except Exception:
+                pass
             # Probe points with a short timeout; ignore if not ready yet
             try:
                 _ = self._safe_query(":SWE:POIN?", retries=2, timeout_ms=1000)
@@ -84,6 +91,16 @@ class FieldFoxSA:
         factor = 1e9 if unit == "GHz" else 1e6 if unit == "MHz" else 1.0
         freq = np.linspace(f_start_hz, f_stop_hz, trace_len) / factor
         return freq
+
+    def set_points(self, n: int):
+        """Set number of sweep points for spectrum capture."""
+        if n is None:
+            return
+        try:
+            self._safe_write(f":SENS:SWE:POIN {int(n)}")
+            self._opc_wait(timeout_ms=1000)
+        except Exception:
+            pass
 
     def capture_spectrum(self):
         if self.inst is None:

@@ -3,23 +3,12 @@
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
-      "name": "LO",
+      "name": "Hittite 0 LO",
       "settings": {
         "frequency": "10",
         "freq_unit": "GHz",
         "power": "0",
-        "output": true
-      }
-    },
-    {
-      "type": "RhodeSchwarz SMA",
-      "resource": "alias:RohdeSchwarz SMA 1",
-      "name": "IF",
-      "settings": {
-        "frequency": "5",
-        "freq_unit": "GHz",
-        "power": "0",
-        "output": true
+        "output": false
       }
     },
     {
@@ -27,16 +16,27 @@
       "resource": "alias:FieldFox 0",
       "name": "FieldFox 0",
       "settings": {
-        "center": "",
-        "span": "",
-        "start": "0",
-        "stop": "25",
+        "center": "1.1",
+        "span": "2",
+        "start": "",
+        "stop": "",
         "unit": "GHz"
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 1",
+      "name": "Hittite 1 IF",
+      "settings": {
+        "frequency": "5",
+        "freq_unit": "GHz",
+        "power": "0",
+        "output": true
       }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "",
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
   "register_read_array": []
 }

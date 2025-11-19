@@ -8,7 +8,7 @@
         "frequency": "8",
         "freq_unit": "GHz",
         "power": "-20",
-        "output": true
+        "output": false
       }
     },
     {
@@ -19,7 +19,7 @@
         "frequency": "13",
         "freq_unit": "GHz",
         "power": "-5",
-        "output": true
+        "output": false
       }
     },
     {
@@ -58,6 +58,52 @@
         "stop": "",
         "unit": "GHz"
       }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CR",
+          "value": "10000",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "CH1"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": true,
+          "name": "CH3"
+        }
+      }
     }
   ],
   "sequence": [
@@ -71,5 +117,90 @@
   ],
   "use_sequence": true,
   "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV1355.py",
-  "register_read_array": [0,10,318,514,514,520,650,651,672,673,1538,2048,2049,2050,2052,2053,2054,2058,2060]
+  "register_read_array": [
+    0,
+    4,
+    5,
+    10,
+    19,
+    318,
+    512,
+    514,
+    515,
+    516,
+    518,
+    519,
+    520,
+    521,
+    522,
+    528,
+    544,
+    545,
+    546,
+    547,
+    548,
+    549,
+    550,
+    551,
+    552,
+    553,
+    554,
+    555,
+    556,
+    576,
+    624,
+    625,
+    641,
+    642,
+    643,
+    644,
+    645,
+    646,
+    647,
+    649,
+    650,
+    651,
+    659,
+    660,
+    664,
+    672,
+    673,
+    675,
+    676,
+    679,
+    688,
+    768,
+    770,
+    772,
+    773,
+    774,
+    781,
+    1026,
+    1536,
+    1537,
+    1538,
+    1792,
+    1793,
+    1794,
+    1795,
+    1920,
+    1921,
+    2048,
+    2049,
+    2050,
+    2051,
+    2052,
+    2053,
+    2054,
+    2055,
+    2056,
+    2057,
+    2058,
+    2059,
+    2060,
+    2089,
+    2090,
+    2091,
+    2144
+  ]
 }

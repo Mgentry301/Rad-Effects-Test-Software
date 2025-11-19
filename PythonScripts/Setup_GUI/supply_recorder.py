@@ -80,16 +80,18 @@ class SupplyRecorder:
             wb = Workbook()
             ws = wb.active
             ws.title = self.sheet_name
-            # Write header
+            # Write header matching row order: [timestamp] + all voltages (all panels) + all currents (all panels)
             header = ["timestamp"]
+            v_headers = []
+            i_headers = []
             for idx, func in enumerate(self.get_readings_funcs):
                 v, c = func()
                 name = self.panel_names[idx]
                 for i in range(len(v)):
-                    header.append(f"{name} V{i+1}")
+                    v_headers.append(f"{name} V{i+1}")
                 for i in range(len(c)):
-                    header.append(f"{name} I{i+1}")
-            ws.append(header)
+                    i_headers.append(f"{name} I{i+1}")
+            ws.append(header + v_headers + i_headers)
         for row in self.buffer:
             ws.append(row)
         wb.save(self.excel_path)
