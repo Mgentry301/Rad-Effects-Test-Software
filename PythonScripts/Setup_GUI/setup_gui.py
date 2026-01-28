@@ -3727,11 +3727,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 return ('Unknown', res, 'Unknown')
 
         results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(resources))) as executor:
-            future_to_res = {executor.submit(scan_resource, res): res for res in resources}
-            for future in concurrent.futures.as_completed(future_to_res):
-                cat, res, inst_type = future.result()
-                categories[cat].append((res, inst_type))
+        if resources:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(resources))) as executor:
+                future_to_res = {executor.submit(scan_resource, res): res for res in resources}
+                for future in concurrent.futures.as_completed(future_to_res):
+                    cat, res, inst_type = future.result()
+                    categories[cat].append((res, inst_type))
 
         total_found = sum(len(v) for v in categories.values())
         if total_found == 0:
