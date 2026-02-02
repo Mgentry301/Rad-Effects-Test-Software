@@ -1,1 +1,0 @@
-# Rad-Effects-Test-Software

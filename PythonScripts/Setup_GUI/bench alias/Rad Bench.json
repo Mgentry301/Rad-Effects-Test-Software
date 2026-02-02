@@ -1,0 +1,11 @@
+{
+  "name": "Rad Bench",
+  "aliases": {
+    "FieldFox 0": "USB0::0x2A8D::0x5C18::MY62151444::INSTR",
+    "Hittite 0": "GPIB0::3::INSTR",
+    "Hittite 1": "GPIB0::4::INSTR",
+    "Keithley 0": "GPIB0::1::INSTR",
+    "Keithley 1": "GPIB0::2::INSTR",
+    "Keysight EL 0": "USB0::0x2A8D::0x3902::MY61002154::INSTR"
+  }
+}
