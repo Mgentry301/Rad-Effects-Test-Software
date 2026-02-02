@@ -14,3 +14,10 @@ This will:
 - Create a Desktop shortcut named "Rad Effects Setup GUI.lnk" that points to `PythonScripts/Setup_GUI/launch_setup_gui.pyw`.
 
 
+Future updates/improvements
+---------------------------
+
+- Break up `setup_gui.py` into smaller modules to improve readability, shorten file lengths, and make future implementations easier.
+- Simplify register export to Excel by writing decimal values directly instead of storing hex strings, improving readability and plotting.
+
+
