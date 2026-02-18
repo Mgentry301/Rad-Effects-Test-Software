@@ -19,5 +19,9 @@ Future updates/improvements
 
 - Break up `setup_gui.py` into smaller modules to improve readability, shorten file lengths, and make future implementations easier.
 - Simplify register export to Excel by writing decimal values directly instead of storing hex strings, improving readability and plotting.
+- Have dewesoft and setup GUI communicate with eachother to sync data reccording
+-     - communication should be able to handle the trigger of reccording data
+-     - garage workaround would be communicate via a voltage truned on with the setup gui and monitored with the dewesoft
+- Getting setup notes integrated into the GUI
 
 
