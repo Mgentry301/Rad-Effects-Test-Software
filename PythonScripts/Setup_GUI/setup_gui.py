@@ -294,8 +294,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._header = self._build_header(panels)
 
             def _build_header(self, panels):
-                # Build header to match row order: timestamp, all voltages (all panels), then all currents (all panels)
-                ts = ['timestamp']
+                # Build header to match row order: timestamp, elapsed_s, all voltages (all panels), then all currents (all panels)
+                ts = ['timestamp', 'elapsed_s']
                 v_headers = []
                 i_headers = []
                 for p in panels:
@@ -432,13 +432,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         time.sleep(min(next_tick - nowp, 0.01))
                         continue
                     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    elapsed_s = round(time.time() - start_time, 3)
                     all_voltages = []
                     all_currents = []
                     for func in self.get_readings_funcs:
                         voltages, currents = func()
                         all_voltages.extend(voltages)
                         all_currents.extend(currents)
-                    row = [now] + all_voltages + all_currents
+                    row = [now, elapsed_s] + all_voltages + all_currents
                     try:
                         self._write_q.put_nowait(row)
                     except Exception:
@@ -769,7 +770,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Prepare workbook / header immediately using cached helpers
         try:
-            header = ['timestamp'] + [f'{addr:#x}' for addr in reg_list]
+            header = ['timestamp', 'elapsed_s'] + [f'{addr:#x}' for addr in reg_list]
             lock = getattr(self, '_excel_lock', None)
             acquired = lock.acquire(timeout=5) if lock else True
             if acquired:
@@ -797,7 +798,7 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         writer_stop = threading.Event()
         flush_interval = 150
-        header = ['timestamp'] + [f'{addr:#x}' for addr in reg_list]
+        header = ['timestamp', 'elapsed_s'] + [f'{addr:#x}' for addr in reg_list]
 
         def writer_loop():
             pending: list[list] = []
@@ -859,6 +860,7 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
             # Connect to ACE server
+            recording_start_time = time.time()
             try:
                 import clr  # type: ignore
                 clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
@@ -875,6 +877,7 @@ class MainWindow(QtWidgets.QMainWindow):
             while running_flag():
                 try:
                     nowts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    elapsed_s = round(time.time() - recording_start_time, 3)
                     values = []
                     for addr in reg_list:
                         try:
@@ -885,7 +888,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             val = f'ERR:{err}'
                         values.append(val)
                     try:
-                        write_q.put_nowait([nowts] + values)
+                        write_q.put_nowait([nowts, elapsed_s] + values)
                     except queue.Full:
                         pass
                     sample_count += 1
@@ -1078,7 +1081,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         n = len(freq)
                     except Exception:
                         n = 0
-                    header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
+                    header = ['timestamp', 'elapsed_s'] + ([f"{f:.6f}" for f in freq] if n > 0 else [])
                     for ci, val in enumerate(header, start=1):
                         ws.cell(row=1, column=ci, value=val)
                     self._excel_save_locked()
@@ -1109,7 +1112,7 @@ class MainWindow(QtWidgets.QMainWindow):
             n0 = len(freq)
         except Exception:
             n0 = 0
-        desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n0 > 0 else [])
+        desired_header = ['timestamp', 'elapsed_s'] + ([f"{f:.6f}" for f in freq] if n0 > 0 else [])
         write_q: "queue.Queue[list]" = queue.Queue(maxsize=20000)
         try:
             self._spectrum_write_q = write_q
@@ -1179,6 +1182,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         time.sleep(0.01)
             except Exception:
                 pass
+            recording_start_time = time.time()
             while running_flag():
                 try:
                     # Reconnect if session not open
@@ -1203,11 +1207,12 @@ class MainWindow(QtWidgets.QMainWindow):
                                 n1 = len(freq)
                             except Exception:
                                 n1 = 0
-                            desired_header = ['timestamp'] + ([f"{f:.6f}" for f in freq] if n1 > 0 else [])
+                            desired_header = ['timestamp', 'elapsed_s'] + ([f"{f:.6f}" for f in freq] if n1 > 0 else [])
                         except Exception:
                             pass
                     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                    row = [now] + [float(a) for a in amplitudes]
+                    elapsed_s = round(time.time() - recording_start_time, 3)
+                    row = [now, elapsed_s] + [float(a) for a in amplitudes]
                     try:
                         write_q.put_nowait(row)
                     except queue.Full:

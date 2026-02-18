@@ -11,3 +11,5 @@ PythonScripts/Setup_GUI/Instruments/__pycache__/keysight_el.cpython-313.pyc
 PythonScripts/Setup_GUI/setup_gui.py
 PythonScripts/Setup_GUI/Instruments/__pycache__/rhodeschwarz_sma.cpython-313.pyc
 /PythonScripts/Setup_GUI/Instruments/__pycache__
+*.pyc
+*.pyc

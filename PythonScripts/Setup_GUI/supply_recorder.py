@@ -45,16 +45,18 @@ class SupplyRecorder:
 
     def _run(self):
         self.last_perf_time = time.time()
+        self._recording_start_time = time.time()
         self.read_count = 0
         while not self._stop_event.is_set():
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            elapsed_s = round(time.time() - self._recording_start_time, 3)
             all_voltages = []
             all_currents = []
             for func in self.get_readings_funcs:
                 voltages, currents = func()
                 all_voltages.extend(voltages)
                 all_currents.extend(currents)
-            row = [now] + all_voltages + all_currents
+            row = [now, elapsed_s] + all_voltages + all_currents
             self.buffer.append(row)
             self.read_count += 1
             # Performance reporting every 10 seconds
@@ -80,8 +82,8 @@ class SupplyRecorder:
             wb = Workbook()
             ws = wb.active
             ws.title = self.sheet_name
-            # Write header matching row order: [timestamp] + all voltages (all panels) + all currents (all panels)
-            header = ["timestamp"]
+            # Write header matching row order: [timestamp, elapsed_s] + all voltages (all panels) + all currents (all panels)
+            header = ["timestamp", "elapsed_s"]
             v_headers = []
             i_headers = []
             for idx, func in enumerate(self.get_readings_funcs):

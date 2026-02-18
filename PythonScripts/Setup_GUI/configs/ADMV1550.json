@@ -1,0 +1,42 @@
+{
+  "instruments": [
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0 LO",
+      "settings": {
+        "frequency": "20",
+        "freq_unit": "GHz",
+        "power": "15",
+        "output": true
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 1",
+      "name": "Hittite 1 RF",
+      "settings": {
+        "frequency": "21",
+        "freq_unit": "GHz",
+        "power": "-10",
+        "output": true
+      }
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "alias:FieldFox 0",
+      "name": "FieldFox 0",
+      "settings": {
+        "center": "2",
+        "span": "3.5",
+        "start": "",
+        "stop": "",
+        "unit": "GHz"
+      }
+    }
+  ],
+  "sequence": [],
+  "use_sequence": false,
+  "program_logic_path": "",
+  "register_read_array": []
+}
