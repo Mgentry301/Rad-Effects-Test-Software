@@ -61,20 +61,13 @@ class NotesMixin:
         self.notes_general.setMinimumHeight(80)
         notes_layout.addWidget(self.notes_general)
 
-        # ---- Save / Append controls ----
+        # ---- Save controls ----
         notes_btn_row = QtWidgets.QHBoxLayout()
         self.save_notes_btn = QtWidgets.QPushButton('Save Notes to Config')
         self.save_notes_btn.setToolTip(
             'Save the current notes back to the last loaded config file')
         self.save_notes_btn.clicked.connect(self._save_notes_to_config)
         notes_btn_row.addWidget(self.save_notes_btn)
-
-        self.notes_append_mode = QtWidgets.QComboBox()
-        self.notes_append_mode.addItems(['Replace on Load', 'Append on Load'])
-        self.notes_append_mode.setToolTip(
-            'Choose whether loading a config replaces or appends to current notes')
-        notes_btn_row.addWidget(QtWidgets.QLabel('Mode:'))
-        notes_btn_row.addWidget(self.notes_append_mode)
         notes_btn_row.addStretch(1)
         notes_layout.addLayout(notes_btn_row)
 
@@ -117,7 +110,7 @@ class NotesMixin:
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, 'Save failed', str(e))
 
-    def _set_notes_from_dict(self, d: dict, append: bool = False):
+    def _set_notes_from_dict(self, d: dict):
         """Populate notes fields from a dict (e.g. loaded from config)."""
         if not isinstance(d, dict):
             return
@@ -128,15 +121,7 @@ class NotesMixin:
             (self.notes_general, 'general'),
         ]
         for widget, key in fields:
-            new_text = d.get(key, '')
-            if append:
-                existing = widget.toPlainText().rstrip()
-                if existing and new_text.strip():
-                    widget.setPlainText(existing + '\n--- loaded from config ---\n' + new_text)
-                elif new_text.strip():
-                    widget.setPlainText(new_text)
-            else:
-                widget.setPlainText(new_text)
+            widget.setPlainText(d.get(key, ''))
 
     def _auto_populate_notes_from_config(self, config_name: str, instruments: list,
                                           sequence: list = None, use_sequence: bool = False,
@@ -218,7 +203,11 @@ class NotesMixin:
                 unit = settings.get('freq_unit', 'MHz')
                 power = settings.get('power', '?')
                 kind = 'Signal Generator' if inst_type == 'Hittite Sig Gen' else 'R&S SMA Signal Generator'
-                conn_lines.append(f'{label}  ({kind}) – RF OUT → DUT')
+                dut_port = entry.get('dut_port', '')
+                if dut_port:
+                    conn_lines.append(f'{label}  ({kind}) → {dut_port}')
+                else:
+                    conn_lines.append(f'{label}  ({kind}) → DUT')
                 src_lines.append(f'{label} – {freq} {unit}, {power} dBm')
 
             elif inst_type == 'Keysight FieldFox':
@@ -226,7 +215,11 @@ class NotesMixin:
                 center = settings.get('center', '?')
                 span = settings.get('span', '?')
                 unit = settings.get('unit', 'GHz')
-                conn_lines.append(f'{label}  (Spectrum Analyzer) – PORT 1 ← DUT output')
+                dut_port = entry.get('dut_port', '')
+                if dut_port:
+                    conn_lines.append(f'{label}  (Spectrum Analyzer) ← {dut_port}')
+                else:
+                    conn_lines.append(f'{label}  (Spectrum Analyzer) ← DUT output')
                 src_lines.append(f'{label} – Spectrum analyzer, center {center} {unit}, span {span} {unit}')
                 mon_lines.append(f'{label} – Record output spectrum')
 

@@ -322,14 +322,8 @@ class ConfigMixin:
                     notes_data.get(k, '').strip()
                     for k in ('connections', 'sources', 'monitoring', 'general')
                 )
-                append_mode = False
-                try:
-                    append_mode = (hasattr(self, 'notes_append_mode')
-                                   and self.notes_append_mode.currentText() == 'Append on Load')
-                except Exception:
-                    pass
                 if has_saved_notes:
-                    self._set_notes_from_dict(notes_data, append=append_mode)
+                    self._set_notes_from_dict(notes_data)
                 else:
                     config_name = os.path.splitext(os.path.basename(path))[0]
                     self._auto_populate_notes_from_config(

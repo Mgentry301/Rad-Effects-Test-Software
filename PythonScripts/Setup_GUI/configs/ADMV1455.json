@@ -4,6 +4,7 @@
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 1",
       "name": "Hittite 1 RF_In",
+      "dut_port": "RF_IN",
       "settings": {
         "frequency": "18",
         "freq_unit": "GHz",
@@ -15,6 +16,7 @@
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
       "name": "Hittite 0 LO",
+      "dut_port": "LO",
       "settings": {
         "frequency": "13",
         "freq_unit": "GHz",
@@ -51,6 +53,7 @@
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
       "name": "FieldFox 0 BB_OP",
+      "dut_port": "BB_OP",
       "settings": {
         "center": "10.1",
         "span": "15",
