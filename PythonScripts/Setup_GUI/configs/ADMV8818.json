@@ -29,6 +29,7 @@
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
       "name": "FieldFox RF Out",
+      "dut_port": "RF_OUT",
       "settings": {
         "center": "3.1",
         "span": "6",
@@ -41,6 +42,7 @@
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
       "name": "Hittite 0 RF_IN",
+      "dut_port": "RF_IN",
       "settings": {
         "frequency": "3",
         "freq_unit": "GHz",
