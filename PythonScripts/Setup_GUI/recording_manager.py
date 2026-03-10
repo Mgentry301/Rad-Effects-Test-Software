@@ -10,6 +10,7 @@ import datetime
 import time
 import threading
 import queue
+import re
 
 from PyQt5 import QtWidgets, QtCore
 
@@ -591,6 +592,8 @@ class RecordingMixin:
     def _start_register_recording(self, excel_path: str, registers: list, rate_cb):
         """Start register recording in background with a non-blocking Excel writer."""
         from openpyxl import Workbook, load_workbook
+        from openpyxl.styles import PatternFill
+        from openpyxl.formatting.rule import CellIsRule
 
         reg_list: list[int] = []
         for r in registers:
@@ -610,6 +613,13 @@ class RecordingMixin:
         last_report_time = start_time
         sample_count = 0
 
+        # Row 2 is reserved for the EXPECTED baseline values; data starts at row 3.
+        baseline_row = 2
+        data_start_row = 3
+        baseline_values: list = []  # filled on first successful read
+        baseline_written = threading.Event()
+        red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+
         try:
             header = ['timestamp', 'elapsed_s'] + [f'{addr:#x}' for addr in reg_list]
             lock = getattr(self, '_excel_lock', None)
@@ -620,6 +630,9 @@ class RecordingMixin:
                     ws = self._excel_get_sheet_locked(sheet_name)
                     for ci, val in enumerate(header, start=1):
                         ws.cell(row=1, column=ci, value=val)
+                    # Pre-label the baseline row
+                    ws.cell(row=baseline_row, column=1, value='EXPECTED')
+                    ws.cell(row=baseline_row, column=2, value=0)
                     self._excel_save_locked()
                 finally:
                     if lock and acquired:
@@ -638,6 +651,27 @@ class RecordingMixin:
         writer_stop = threading.Event()
         flush_interval = 150
         header = ['timestamp', 'elapsed_s'] + [f'{addr:#x}' for addr in reg_list]
+
+        def _write_baseline_and_formatting(ws, vals):
+            """Write the EXPECTED row and apply conditional formatting once."""
+            from openpyxl.utils import get_column_letter
+            ws.cell(row=baseline_row, column=1, value='EXPECTED')
+            ws.cell(row=baseline_row, column=2, value=0)
+            for ci, v in enumerate(vals, start=3):
+                ws.cell(row=baseline_row, column=ci, value=v)
+            # Apply conditional formatting: highlight cells that differ from EXPECTED
+            for ci in range(3, 3 + len(vals)):
+                col_letter = get_column_letter(ci)
+                ref_cell = f'${col_letter}${baseline_row}'
+                cell_range = f'{col_letter}{data_start_row}:{col_letter}1048576'
+                ws.conditional_formatting.add(
+                    cell_range,
+                    CellIsRule(
+                        operator='notEqual',
+                        formula=[ref_cell],
+                        fill=red_fill,
+                    ),
+                )
 
         def writer_loop():
             pending_rows: list[list] = []
@@ -664,6 +698,13 @@ class RecordingMixin:
                                     ws.cell(row=1, column=ci, value=val)
                             except Exception:
                                 pass
+                            # Write baseline + formatting on first flush
+                            if baseline_written.is_set() and not getattr(ws, '_baseline_done', False):
+                                try:
+                                    _write_baseline_and_formatting(ws, baseline_values)
+                                    ws._baseline_done = True
+                                except Exception:
+                                    pass
                             for row in pending_rows:
                                 ws.append(row)
                             pending_rows.clear()
@@ -710,6 +751,20 @@ class RecordingMixin:
                 except Exception:
                     pass
                 return
+            def _parse_register_value(raw_val):
+                """Convert a raw ACE register response to an integer."""
+                if hasattr(raw_val, 'strip'):
+                    raw_val = raw_val.strip('\r\n')
+                if isinstance(raw_val, str):
+                    sval = raw_val.strip()
+                    if re.fullmatch(r'0[xX][0-9A-Fa-f]+', sval):
+                        return int(sval, 16)
+                    elif re.fullmatch(r'[0-9A-Fa-f]+', sval):
+                        return int(sval, 16)
+                    else:
+                        return int(sval)
+                return int(raw_val)
+
             while running_flag():
                 try:
                     nowts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -717,12 +772,15 @@ class RecordingMixin:
                     values = []
                     for addr in reg_list:
                         try:
-                            val = client.ReadRegister(str(int(addr)))
-                            if hasattr(val, 'strip'):
-                                val = val.strip('\r\n')
+                            val = _parse_register_value(client.ReadRegister(str(int(addr))))
                         except Exception as err:
                             val = f'ERR:{err}'
                         values.append(val)
+                    # Capture baseline from the first successful read
+                    if not baseline_written.is_set():
+                        if all(isinstance(v, int) for v in values):
+                            baseline_values.extend(values)
+                            baseline_written.set()
                     try:
                         write_q.put_nowait([nowts, elapsed_s] + values)
                     except queue.Full:

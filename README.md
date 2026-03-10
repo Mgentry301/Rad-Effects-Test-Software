@@ -18,7 +18,7 @@ Future updates/improvements
 ---------------------------
 
 - ~~Break up `setup_gui.py` into smaller modules to improve readability, shorten file lengths, and make future implementations easier.~~ *(done – see table below)*
-- Simplify register export to Excel by writing decimal values directly instead of storing hex strings, improving readability and plotting.
+- ~~Simplify register export to Excel by writing decimal values directly instead of storing hex strings, improving readability and plotting.~~ *(done – registers are exported as integers with an EXPECTED baseline row and conditional formatting to highlight anomalies)*
 
 ### `setup_gui.py` module breakdown
 
