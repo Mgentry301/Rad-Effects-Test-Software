@@ -1,0 +1,123 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "3.3",
+          "current": "1.5",
+          "output": false,
+          "name": "3.3V"
+        },
+        "2": {
+          "voltage": "1.8",
+          "current": "1.5",
+          "output": false,
+          "name": "1.8V"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0 LO",
+      "dut_port": "LO",
+      "settings": {
+        "frequency": "30",
+        "freq_unit": "GHz",
+        "power": "5",
+        "output": false
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 1",
+      "name": "Hittite 1 RF",
+      "dut_port": "RF",
+      "settings": {
+        "frequency": "35",
+        "freq_unit": "GHz",
+        "power": "-10",
+        "output": false
+      }
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "alias:FieldFox 0",
+      "name": "FieldFox 0 IF",
+      "dut_port": "IF",
+      "settings": {
+        "center": "5",
+        "span": "6",
+        "start": "",
+        "stop": "",
+        "unit": "GHz"
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "Beam"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CR",
+          "value": "10000",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 0 Channel 1",
+    "Delay: 1.0 s",
+    "KeithleyChannel: Keithley 0 Channel 2",
+    "Delay: 1.0 s",
+    "Instrument: Hittite 0 LO",
+    "Instrument: Hittite 1 RF"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "",
+  "register_read_array": []
+}
