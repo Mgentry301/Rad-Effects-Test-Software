@@ -464,6 +464,17 @@ class MainWindow(
             self._stop_all_recordings()
         except Exception:
             pass
+        # Turn off all instrument outputs/inputs before disconnecting so nothing
+        # is left energized after the app exits.
+        try:
+            if hasattr(self, 'power_off_all'):
+                self.power_off_all()
+                try:
+                    QtWidgets.QApplication.processEvents()
+                except Exception:
+                    pass
+        except Exception:
+            pass
         # close all panels to ensure instruments are closed
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
