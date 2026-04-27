@@ -1,21 +1,36 @@
 $ErrorActionPreference = 'Stop'
 
 # Compute repo root relative to this file
+# This file lives at <repo>\PythonScripts\Setup_GUI\Support_Scrips, so
+# the repo root is three levels up.
 $thisDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = Resolve-Path (Join-Path $thisDir '..\\..\\..\\..')
+$repoRoot = Resolve-Path (Join-Path $thisDir '..\..\..')
 
 # Desktop shortcut name and path
 $desktop = [Environment]::GetFolderPath('Desktop')
 $shortcutPath = Join-Path $desktop 'Setup_GUI.lnk'
-# Prefer launching setup_gui.py via pythonw.exe directly (no console window)
-$pythonw = 'C:\\Program Files\\Python313\\pythonw.exe'
-if (-not (Test-Path $pythonw)) {
-    # Fallback to pythonw.exe on PATH if installed elsewhere (PowerShell 5.1 compatible)
+# Prefer the project's venv pythonw.exe (no console window, correct deps),
+# then a real system Python, and finally pythonw.exe on PATH (skipping the
+# Microsoft Store WindowsApps stub which is not a usable interpreter).
+$candidates = @(
+    (Join-Path $repoRoot '.venv\Scripts\pythonw.exe'),
+    'C:\Program Files\Python313\pythonw.exe',
+    'C:\Program Files\Python312\pythonw.exe',
+    'C:\Program Files\Python311\pythonw.exe',
+    'C:\Program Files\Python310\pythonw.exe'
+)
+$pythonw = $null
+foreach ($c in $candidates) {
+    if ($c -and (Test-Path $c)) { $pythonw = (Resolve-Path $c).Path; break }
+}
+if (-not $pythonw) {
     $cmd = Get-Command pythonw.exe -ErrorAction SilentlyContinue
-    if ($cmd) { $pythonw = $cmd.Source }
+    if ($cmd -and $cmd.Source -and ($cmd.Source -notmatch 'WindowsApps')) {
+        $pythonw = $cmd.Source
+    }
 }
 if (-not $pythonw -or -not (Test-Path $pythonw)) {
-    throw "pythonw.exe not found. Ensure Python is installed or update create_desktop_shortcut.ps1."
+    throw "pythonw.exe not found. Create the project venv (setup_repo.ps1) or install Python."
 }
 
 $guiScript = Join-Path $thisDir '..\setup_gui.py'
