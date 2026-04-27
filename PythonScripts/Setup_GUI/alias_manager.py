@@ -81,6 +81,13 @@ class AliasMixin:
             path = self._alias_profile_path(name)
             if not os.path.exists(path):
                 return
+            # Power off all instruments before loading a new alias setup so
+            # we never leave outputs enabled on the previous bench mapping.
+            try:
+                if hasattr(self, 'power_off_all'):
+                    self.power_off_all()
+            except Exception:
+                pass
             with open(path, 'r') as f:
                 data = json.load(f)
             self.alias_profile = data.get('name', name)

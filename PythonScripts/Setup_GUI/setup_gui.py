@@ -369,6 +369,28 @@ class MainWindow(
         self.register_record_toggle = QtWidgets.QCheckBox('Register')
         self.register_record_toggle.setChecked(False)
         record_row.addWidget(self.register_record_toggle)
+        # Live register monitor (works while register recording is active)
+        self.register_monitor_btn = QtWidgets.QPushButton('Live Monitor')
+        self.register_monitor_btn.setToolTip(
+            'Open a window to live-monitor selected registers from register_read_array '
+            '(values update while register recording is running)')
+        self.register_monitor_btn.clicked.connect(self.open_register_monitor)
+        record_row.addWidget(self.register_monitor_btn)
+        # Threshold (in samples) for highlighting register changes that follow
+        # a prolonged constant hold. Applied to the exported Excel on stop.
+        record_row.addWidget(QtWidgets.QLabel('Change-after-hold ≥'))
+        self.register_change_run_spin = QtWidgets.QSpinBox()
+        self.register_change_run_spin.setRange(2, 1000000)
+        self.register_change_run_spin.setValue(10)
+        self.register_change_run_spin.setSuffix(' samples')
+        self.register_change_run_spin.setToolTip(
+            'On stop, highlight (yellow) any register cell where the value '
+            'changed after holding the previous value for at least this many '
+            'consecutive samples.')
+        self.register_change_run_spin.valueChanged.connect(
+            lambda v: setattr(self, 'register_change_min_run', int(v)))
+        record_row.addWidget(self.register_change_run_spin)
+        self.register_change_min_run = int(self.register_change_run_spin.value())
         self.supply_read_speed_label = QtWidgets.QLabel('Supply Sample Rate: --')
         self.spectrum_read_speed_label = QtWidgets.QLabel('Spectrum Sample Rate: --')
         self.register_read_speed_label = QtWidgets.QLabel('Register Sample Rate: --')
@@ -462,6 +484,17 @@ class MainWindow(
         # Ensure all background recordings are stopped and workbook is saved before exit
         try:
             self._stop_all_recordings()
+        except Exception:
+            pass
+        # Turn off all instrument outputs/inputs before disconnecting so nothing
+        # is left energized after the app exits.
+        try:
+            if hasattr(self, 'power_off_all'):
+                self.power_off_all()
+                try:
+                    QtWidgets.QApplication.processEvents()
+                except Exception:
+                    pass
         except Exception:
             pass
         # close all panels to ensure instruments are closed

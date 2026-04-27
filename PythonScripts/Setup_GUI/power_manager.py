@@ -104,6 +104,144 @@ class PowerMixin:
         except Exception:
             pass
 
+    def _hittite_apply_on_power(self, panel: HittiteSigGenPanel, on: bool):
+        """On global Power On/Off for a Hittite sig-gen tab: auto-connect if
+        the panel was loaded from an alias but never connected, push current
+        UI freq/power to hardware, then toggle the output. Mirrors the
+        FieldFox behavior so HT0/HT1 turn on with "Power All On" whenever
+        they are present in the loaded alias/config."""
+        try:
+            # Auto-connect if needed (alias load defers connect for Hittite)
+            if getattr(panel, 'dev', None) is None and hasattr(panel, 'on_connect'):
+                try:
+                    panel.on_connect()
+                except Exception:
+                    pass
+
+            def _apply(attempt: int = 0):
+                dev = getattr(panel, 'dev', None)
+                if dev is None:
+                    if attempt < 5 and hasattr(panel, 'on_connect'):
+                        try:
+                            panel.on_connect()
+                        except Exception:
+                            pass
+                        QtCore.QTimer.singleShot(400, lambda: _apply(attempt + 1))
+                    else:
+                        try:
+                            panel.status_label.setText('Not connected; cannot toggle output')
+                        except Exception:
+                            pass
+                    return
+                if on:
+                    # Push current UI freq/power to hardware before enabling output
+                    try:
+                        if hasattr(panel, '_apply_ui_to_hw'):
+                            panel._apply_ui_to_hw()
+                        else:
+                            try:
+                                freq_val = float(panel.freq_edit.text())
+                                unit = panel.freq_unit_combo.currentText()
+                                mult = {'GHz': 1e9, 'MHz': 1e6, 'KHz': 1e3, 'Hz': 1}.get(unit, 1)
+                                dev.set_frequency(freq_val * mult)
+                            except Exception:
+                                pass
+                            try:
+                                dev.set_power(float(panel.pow_edit.text()))
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                try:
+                    dev.set_output(on)
+                except Exception as e:
+                    try:
+                        panel.status_label.setText(f'Failed to set output: {e}')
+                    except Exception:
+                        pass
+                    return
+                if hasattr(panel, 'output_btn'):
+                    try:
+                        panel.output_btn.blockSignals(True)
+                        panel.output_btn.setChecked(on)
+                        panel.output_btn.setText('Output On' if on else 'Output Off')
+                    finally:
+                        panel.output_btn.blockSignals(False)
+                if hasattr(panel, '_update_output_btn_color'):
+                    try:
+                        panel._update_output_btn_color(on)
+                    except Exception:
+                        pass
+                try:
+                    panel.status_label.setText('Output ON' if on else 'Output OFF')
+                except Exception:
+                    pass
+
+            QtCore.QTimer.singleShot(0, _apply)
+        except Exception:
+            pass
+
+    def _fieldfox_apply_on_power(self, panel: FieldFoxSAPanel, on: bool):
+        """On global Power On, sync FieldFox viewing window to the loaded
+        alias/UI settings automatically (no need to click Apply). On Power Off,
+        pause streaming so the plot stops updating."""
+        try:
+            if on:
+                # Ensure the instrument is connected before applying settings
+                if getattr(panel.sa, 'inst', None) is None and hasattr(panel, 'on_connect'):
+                    try:
+                        panel.on_connect()
+                    except Exception:
+                        pass
+
+                def _apply(attempt: int = 0):
+                    try:
+                        if getattr(panel.sa, 'inst', None) is None:
+                            if attempt < 5 and hasattr(panel, 'on_connect'):
+                                try:
+                                    panel.on_connect()
+                                except Exception:
+                                    pass
+                                QtCore.QTimer.singleShot(500, lambda: _apply(attempt + 1))
+                            return
+                        # Make sure streaming is enabled so the plot refreshes
+                        if hasattr(panel, 'streaming_enabled'):
+                            panel.streaming_enabled = True
+                        if hasattr(panel, 'stream_btn'):
+                            try:
+                                panel.stream_btn.blockSignals(True)
+                                panel.stream_btn.setChecked(True)
+                                panel.stream_btn.setText('Pause Streaming')
+                            finally:
+                                panel.stream_btn.blockSignals(False)
+                        # Push UI values (from loaded alias) to the instrument
+                        if hasattr(panel, 'apply_settings'):
+                            panel.apply_settings()
+                        if hasattr(panel, 'start_capture_thread'):
+                            panel.start_capture_thread()
+                    except Exception:
+                        pass
+
+                QtCore.QTimer.singleShot(0, _apply)
+            else:
+                # Pause streaming on Power Off
+                if hasattr(panel, 'streaming_enabled'):
+                    panel.streaming_enabled = False
+                if hasattr(panel, 'stop_capture_thread'):
+                    try:
+                        panel.stop_capture_thread()
+                    except Exception:
+                        pass
+                if hasattr(panel, 'stream_btn'):
+                    try:
+                        panel.stream_btn.blockSignals(True)
+                        panel.stream_btn.setChecked(False)
+                        panel.stream_btn.setText('Start Streaming')
+                    finally:
+                        panel.stream_btn.blockSignals(False)
+        except Exception:
+            pass
+
     # --- Auto-turn-off newly added panels ---
     def _auto_turn_off_panel(self, panel):
         """Safely turn off outputs/inputs for a newly added panel."""
@@ -207,13 +345,13 @@ class PowerMixin:
             if isinstance(widget, KeithleyPanel):
                 self._keithley_apply_settings(widget, False)
             elif isinstance(widget, HittiteSigGenPanel):
-                self._generic_output_toggle(widget, False)
+                self._hittite_apply_on_power(widget, False)
             elif isinstance(widget, KeysightELPanel):
                 self._keysight_el_apply_settings(widget, False)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
                 self._generic_output_toggle(widget, False)
             elif isinstance(widget, FieldFoxSAPanel):
-                self._generic_output_toggle(widget, False)
+                self._fieldfox_apply_on_power(widget, False)
         if hasattr(self, 'test_power_toggle_btn'):
             self.test_power_toggle_btn.setChecked(False)
             self._update_test_power_toggle_btn(False)
@@ -227,11 +365,11 @@ class PowerMixin:
             if isinstance(widget, KeithleyPanel):
                 self._keithley_apply_settings(widget, True)
             elif isinstance(widget, HittiteSigGenPanel):
-                self._generic_output_toggle(widget, True)
+                self._hittite_apply_on_power(widget, True)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
                 self._generic_output_toggle(widget, True)
             elif isinstance(widget, FieldFoxSAPanel):
-                self._generic_output_toggle(widget, True)
+                self._fieldfox_apply_on_power(widget, True)
         for i in range(self.tabs.count()):
             widget = self.tabs.widget(i)
             if isinstance(widget, KeysightELPanel):

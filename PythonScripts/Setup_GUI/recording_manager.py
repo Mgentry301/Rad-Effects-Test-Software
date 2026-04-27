@@ -20,6 +20,49 @@ from Support_Scrips.Front_Panels.fieldfox_sa_panel import FieldFoxSAPanel
 class RecordingMixin:
     """Mixin that adds recording functionality to MainWindow."""
 
+    def _resolve_register_read_array(self) -> list:
+        """Return the active register_read_array, falling back to the loaded config file."""
+        try:
+            arr = getattr(self, 'register_read_array', None)
+            if arr:
+                return list(arr)
+        except Exception:
+            pass
+        try:
+            cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+            if cfg_name:
+                cfg_path = os.path.join(self.configs_dir, cfg_name)
+                if os.path.exists(cfg_path):
+                    with open(cfg_path, 'r') as f:
+                        data = json.load(f)
+                        return list(data.get('register_read_array', []) or [])
+        except Exception:
+            pass
+        return []
+
+    def open_register_monitor(self):
+        """Open (or raise) the live register monitor dialog."""
+        from register_monitor import RegisterMonitorDialog
+        regs = self._resolve_register_read_array()
+        if not regs:
+            QtWidgets.QMessageBox.warning(
+                self, 'No registers configured',
+                'No register_read_array found in the current config.\n'
+                'Load a config that defines it before opening the monitor.')
+            return
+        existing = getattr(self, '_register_monitor_dialog', None)
+        if existing is not None:
+            try:
+                if existing.isVisible():
+                    existing.raise_()
+                    existing.activateWindow()
+                    return
+            except Exception:
+                pass
+        dlg = RegisterMonitorDialog(self, regs)
+        self._register_monitor_dialog = dlg
+        dlg.show()
+
     def on_record_clicked(self):
         """Unified record button: start/stop recording for selected metrics."""
         if self.record_btn.isChecked():
@@ -559,6 +602,15 @@ class RecordingMixin:
                 lock = getattr(self, '_excel_lock', None)
                 if lock and lock.acquire(timeout=5):
                     try:
+                        # Highlight register transitions that follow a prolonged
+                        # constant run before doing the final save.
+                        try:
+                            self._apply_register_change_highlights_locked()
+                        except Exception as e:
+                            try:
+                                self._log(f'Register change highlighting failed: {e}')
+                            except Exception:
+                                pass
                         self._excel_save_locked(force=True)
                     finally:
                         try:
@@ -589,6 +641,88 @@ class RecordingMixin:
         except Exception:
             pass
 
+    def _apply_register_change_highlights_locked(self):
+        """Highlight transitions in the 'register reads' sheet where a register
+        value changes after holding the same value for at least
+        ``register_change_min_run`` consecutive samples.
+
+        Must be called with ``self._excel_lock`` already held. Uses the
+        currently open workbook (``_excel_*_locked`` helpers).
+        """
+        from openpyxl.styles import PatternFill
+        from openpyxl.comments import Comment
+
+        sheet_name = 'register reads'
+        try:
+            wb = getattr(self, '_excel_wb', None)
+            if wb is None or sheet_name not in wb.sheetnames:
+                return
+        except Exception:
+            return
+
+        try:
+            min_run = int(getattr(self, 'register_change_min_run', 10))
+        except Exception:
+            min_run = 10
+        if min_run < 2:
+            min_run = 2
+
+        try:
+            ws = self._excel_get_sheet_locked(sheet_name)
+        except Exception:
+            return
+
+        max_row = ws.max_row or 0
+        max_col = ws.max_column or 0
+        # Header row 1, EXPECTED row 2, data starts row 3
+        data_start = 3
+        if max_row < data_start + 1 or max_col < 3:
+            return
+
+        # Use a yellow fill for "change after prolonged hold". The existing
+        # mismatch-vs-EXPECTED highlighting (red) is applied via conditional
+        # formatting and remains in place; this fill takes precedence on the
+        # specific transition cells where it is applied.
+        change_fill = PatternFill(start_color='FFEB3B', end_color='FFEB3B', fill_type='solid')
+
+        highlight_count = 0
+        for col in range(3, max_col + 1):
+            prev_val = None
+            run_len = 0
+            for row in range(data_start, max_row + 1):
+                cell = ws.cell(row=row, column=col)
+                v = cell.value
+                if v is None:
+                    prev_val = None
+                    run_len = 0
+                    continue
+                if prev_val is None:
+                    prev_val = v
+                    run_len = 1
+                    continue
+                if v == prev_val:
+                    run_len += 1
+                else:
+                    if run_len >= min_run:
+                        try:
+                            cell.fill = change_fill
+                            cell.comment = Comment(
+                                f'Changed after holding previous value for '
+                                f'{run_len} consecutive samples.',
+                                'RegisterMonitor',
+                            )
+                            highlight_count += 1
+                        except Exception:
+                            pass
+                    prev_val = v
+                    run_len = 1
+        try:
+            self._log(
+                f'Register change highlighting: marked {highlight_count} '
+                f'transition(s) (min run = {min_run} samples).')
+        except Exception:
+            pass
+
     def _start_register_recording(self, excel_path: str, registers: list, rate_cb):
         """Start register recording in background with a non-blocking Excel writer."""
         from openpyxl import Workbook, load_workbook
@@ -607,6 +741,15 @@ class RecordingMixin:
         if not reg_list:
             QtWidgets.QMessageBox.warning(self, 'No registers', 'No registers specified to record.')
             return
+
+        # Publish address list + initialise live-monitor data structures so
+        # the RegisterMonitorDialog can read them.
+        try:
+            self._register_addr_list = list(reg_list)
+            self._register_latest_values = {}
+            self._register_baseline = {}
+        except Exception:
+            pass
 
         sheet_name = 'register reads'
         start_time = time.time()
@@ -781,6 +924,22 @@ class RecordingMixin:
                         if all(isinstance(v, int) for v in values):
                             baseline_values.extend(values)
                             baseline_written.set()
+                            try:
+                                self._register_baseline = {
+                                    a: v for a, v in zip(reg_list, values)
+                                }
+                            except Exception:
+                                pass
+                    # Publish latest values for the live monitor (best effort)
+                    try:
+                        latest = getattr(self, '_register_latest_values', None)
+                        if latest is None:
+                            latest = {}
+                            self._register_latest_values = latest
+                        for a, v in zip(reg_list, values):
+                            latest[a] = (v, nowts, elapsed_s)
+                    except Exception:
+                        pass
                     try:
                         write_q.put_nowait([nowts, elapsed_s] + values)
                     except queue.Full:
