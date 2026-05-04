@@ -120,5 +120,11 @@
   ],
   "use_sequence": true,
   "program_logic_path": "",
-  "register_read_array": []
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \"3.3a\" \u2192 3.3 V, 1.5 A limit\n    CH2 \"3.3b\" \u2192 3.3 V, 1.5 A limit\n    CH3 \"P5V\" \u2192 5.0 V, 1.0 A limit\nHittite 0 RF_IN \u2192 SMA RF_IN (RF Band 2 input)\nHittite 1 LO    \u2192 SMA LO\nFieldFox 0 RF   \u2192 SMA IF output (IF Mode)",
+    "sources": "Keithley 0 \u2013 DUT power: 3.3a @ 3.3 V, 3.3b @ 3.3 V, P5V @ 5.0 V\nHittite 0 \u2013 RF input drive @ 5 GHz, -25 dBm (within RF Band 2: 3-13 GHz)\nHittite 1 \u2013 LO drive @ 11 GHz, -5 dBm\nKeysight EL 0 \u2013 Electronic load (CH1 CC 0.1 A off, CH2 CR 10 k\u03a9 on)",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on 3.3a / 3.3b / P5V\nFieldFox 0 \u2013 IF output spectrum, center 6 GHz, span 10 GHz\n    (USB sideband: IF = LO - RF = 11 - 5 = 6 GHz)\nKeysight EL 0 \u2013 Monitor load currents / voltages",
+    "general": "ADMV1420 Downconverter setup (per Memory Map / Side-By-Side view):\n    RF Band Select : RF Band 2 (3 GHz to 13 GHz)\n    IF Band Select : IF Low Band (1 GHz to 5 GHz)\n    Output Select  : IF Mode (IF chain \u2192 DSA4/DSA5 \u2192 IF port)\n    Sideband       : USB\nSignal path: RF_IN \u2192 RF Band 2 amp \u2192 mixer (LO) \u2192 IF chain \u2192 IF output.\nPower-on order: enable Keithley 0 supplies (3.3a, 3.3b, P5V) before applying LO / RF.\nProgram DUT via ACE macro (IF Mode, RF Band 2, IF Low Band, USB) before RF test."
+  }
 }
