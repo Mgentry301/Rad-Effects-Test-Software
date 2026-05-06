@@ -6,16 +6,16 @@
       "name": "Keithley 0",
       "channels": {
         "1": {
-          "voltage": "1.8",
+          "voltage": "12.0",
           "current": "0.5",
           "output": false,
-          "name": "VCC 1.8V"
+          "name": "+12V"
         },
         "2": {
-          "voltage": "3.3",
+          "voltage": "3.8",
           "current": "0.5",
           "output": false,
-          "name": "VCCIO 3.3V"
+          "name": "+3.8V"
         },
         "3": {
           "voltage": "0.0",
