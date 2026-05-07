@@ -146,19 +146,21 @@ class RecordingMixin:
                     self.statusBar().showMessage('Started recording spectrum', 4000)
             if self.register_record_toggle.isChecked():
                 registers = []
+                context_path = ''
                 try:
                     if hasattr(self, 'register_read_array') and self.register_read_array:
                         registers = self.register_read_array
-                    else:
-                        cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
-                        if cfg_name:
-                            cfg_path = os.path.join(self.configs_dir, cfg_name)
-                            if os.path.exists(cfg_path):
-                                with open(cfg_path, 'r') as f:
-                                    data = json.load(f)
+                    cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+                    if cfg_name:
+                        cfg_path = os.path.join(self.configs_dir, cfg_name)
+                        if os.path.exists(cfg_path):
+                            with open(cfg_path, 'r') as f:
+                                data = json.load(f)
+                                if not registers:
                                     registers = data.get('register_read_array', [])
+                                context_path = data.get('register_context_path', '') or self._resolve_context_path_from_logic(data.get('program_logic_path', ''))
                 except Exception:
-                    registers = []
+                    registers = registers or []
                 if not registers:
                     QtWidgets.QMessageBox.warning(self, 'No registers configured', 'No register_read_array found in current config. Load a config that defines it.')
                 else:
@@ -167,7 +169,7 @@ class RecordingMixin:
                             self.register_read_speed_label.setText(f'Register Sample Rate: {sps:.2f} samples/sec')
                         except Exception:
                             pass
-                    self._start_register_recording(excel_path, registers, update_register_read_speed)
+                    self._start_register_recording(excel_path, registers, update_register_read_speed, context_path=context_path)
                     self.statusBar().showMessage('Started recording registers', 4000)
             self.record_btn.setText('Stop Recording')
             try:
@@ -430,26 +432,28 @@ class RecordingMixin:
                     self._start_spectrum_capture(fieldfox_panel, excel_path, update_spectrum_read_speed)
             if self.register_record_toggle.isChecked():
                 registers = []
+                context_path = ''
                 try:
                     if hasattr(self, 'register_read_array') and self.register_read_array:
                         registers = self.register_read_array
-                    else:
-                        cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
-                        if cfg_name:
-                            cfg_path = os.path.join(self.configs_dir, cfg_name)
-                            if os.path.exists(cfg_path):
-                                with open(cfg_path, 'r') as f:
-                                    data = json.load(f)
+                    cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+                    if cfg_name:
+                        cfg_path = os.path.join(self.configs_dir, cfg_name)
+                        if os.path.exists(cfg_path):
+                            with open(cfg_path, 'r') as f:
+                                data = json.load(f)
+                                if not registers:
                                     registers = data.get('register_read_array', [])
+                                context_path = data.get('register_context_path', '') or self._resolve_context_path_from_logic(data.get('program_logic_path', ''))
                 except Exception:
-                    registers = []
+                    registers = registers or []
                 if registers:
                     def update_register_read_speed(sps: float):
                         try:
                             self.register_read_speed_label.setText(f'Register Sample Rate: {sps:.2f} samples/sec')
                         except Exception:
                             pass
-                    self._start_register_recording(excel_path, registers, update_register_read_speed)
+                    self._start_register_recording(excel_path, registers, update_register_read_speed, context_path=context_path)
             self._record_primed = True
             self.record_btn.setEnabled(True)
             for cb in (self.supply_record_toggle, self.spectrum_record_toggle, self.register_record_toggle):
@@ -723,11 +727,31 @@ class RecordingMixin:
         except Exception:
             pass
 
-    def _start_register_recording(self, excel_path: str, registers: list, rate_cb):
+    def _resolve_context_path_from_logic(self, logic_path: str) -> str:
+        """Parse a programming-logic .py file for `client.ContextPath = "..."` and return the value."""
+        try:
+            if not logic_path or not os.path.exists(logic_path):
+                return ''
+            import re
+            with open(logic_path, 'r', encoding='utf-8', errors='ignore') as f:
+                src = f.read()
+            m = re.search(r'\bContextPath\s*=\s*(["\\\'])(.+?)\1', src)
+            if not m:
+                return ''
+            raw = m.group(2)
+            try:
+                return raw.encode('utf-8').decode('unicode_escape')
+            except Exception:
+                return raw
+        except Exception:
+            return ''
+
+    def _start_register_recording(self, excel_path: str, registers: list, rate_cb, context_path: str = ''):
         """Start register recording in background with a non-blocking Excel writer."""
         from openpyxl import Workbook, load_workbook
         from openpyxl.styles import PatternFill
         from openpyxl.formatting.rule import CellIsRule
+
 
         reg_list: list[int] = []
         for r in registers:
@@ -882,15 +906,41 @@ class RecordingMixin:
                 pass
             recording_start_time = time.time()
             try:
+                import sys as _sys
+                ace_path = r'C:\Program Files\Analog Devices\ACE\Client'
+                if ace_path not in _sys.path:
+                    _sys.path.append(ace_path)
                 import clr  # type: ignore
                 clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
                 clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
                 from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
                 manager = ClientManager.Create()
                 client = manager.CreateRequestClient('localhost:2357')
+                try:
+                    self._log(f'Register recording: ACE client connected (registers={len(reg_list)})')
+                except Exception:
+                    pass
+                if context_path:
+                    try:
+                        client.ContextPath = context_path
+                        try:
+                            self._log(f'Register recording ContextPath set: {context_path}')
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        try:
+                            self._log(f'Failed to set ContextPath "{context_path}": {e}')
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        self._log('Warning: no ContextPath configured for register recording (set register_context_path in config or program_logic_path with ContextPath=...).')
+                    except Exception:
+                        pass
             except Exception as e:
                 try:
-                    self._log(f'ACE connection failed: {e}')
+                    import traceback as _tb
+                    self._log(f'ACE connection failed for register recording: {e}\n{_tb.format_exc()}')
                 except Exception:
                     pass
                 return

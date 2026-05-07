@@ -154,5 +154,11 @@
     2098,
     2099,
     2100
-  ]
+  ],
+  "notes": {
+    "connections": "Hittite 1 RF_In  (Signal Generator) \u2192 RF_IN\nHittite 0 LO  (Signal Generator) \u2192 LO\nKeithley 0  (Power Supply)\n    CH1 \"2.5V\" \u2192 2.750000 V, 1.5 A limit\n    CH2 \"1.8V_B\" \u2192 1.980000 V, 1.5 A limit\n    CH3 \"1.8V_A\" \u2192 1.980000 V, 1.5 A limit\nFieldFox 0 BB_OP  (Spectrum Analyzer) \u2190 BB_OP",
+    "sources": "Hittite 1 RF_In \u2013 18 GHz, -20 dBm\nHittite 0 LO \u2013 13 GHz, -5 dBm\nKeithley 0 \u2013 DUT power: 2.5V @ 2.750000 V, 1.8V_B @ 1.980000 V, 1.8V_A @ 1.980000 V\nFieldFox 0 BB_OP \u2013 Spectrum analyzer, center 10.1 GHz, span 15 GHz",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 BB_OP \u2013 Record output spectrum\nRegister reads: 0x0, 0xa, 0x13, 0x43, 0x51, 0x52, 0x55, 0x5f, 0x101, 0x104, 0x105, 0x107, 0x108, 0x14e, 0x178, 0x179, 0x17d, 0x17e, 0x180, 0x184  \u2026 and 59 more",
+    "general": "Mode:\n\tRF Band Select: High Band\n\tOutput Select: IF Mode\n\tSideBand: USB\nOutput:\n\t-40dBm@8GHz"
+  }
 }

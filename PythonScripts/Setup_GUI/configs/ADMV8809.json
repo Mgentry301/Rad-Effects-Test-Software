@@ -119,5 +119,11 @@
     25,
     38,
     39
-  ]
+  ],
+  "notes": {
+    "connections": "Keithley 0  (Power Supply)\n    CH1 \"3.3V\" \u2192 3.3 V, 1.5 A limit\n    CH2 \"Negative 2.5V\" \u2192 2.5 V, 1.5 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 0.0 A limit\nHittite 0 RF1  (Signal Generator) \u2192 RF1\nFieldFox 0 RF2  (Spectrum Analyzer) \u2190 RF2\nKeithley 1  (Power Supply)\n    CH1 \"Beam\" \u2192 0.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 1.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 1.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 CR mode, 10000, input ON",
+    "sources": "Keithley 0 \u2013 DUT power: 3.3V @ 3.3 V, Negative 2.5V @ 2.5 V\nHittite 0 RF1 \u2013 2.4 GHz, -5 dBm\nFieldFox 0 RF2 \u2013 Spectrum analyzer, center 2.5 GHz, span 5 GHz\nKeithley 1 \u2013 DUT power supply (channels unused or 0 V)\nKeysight EL 0 \u2013 Electronic load",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 RF2 \u2013 Record output spectrum\nKeithley 1 \u2013 Monitor supply currents on all active channels\nKeysight EL 0 \u2013 Monitor load currents / voltages\nRegister reads: 0x0, 0x1, 0x3, 0x4, 0x5, 0xa, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x26, 0x27",
+    "general": "Config: ADMV8809\nProgramming logic: ADMV8809.py\nReg Programming:\n\tWR_SW: 0x03\n\tWR_Filter:0x78\n\tScratch_Pad: 0xFE\nHT1:\n\t5GHz, 0dBm\nFF0:\n\tReads 5GHz@-10dBm"
+  }
 }

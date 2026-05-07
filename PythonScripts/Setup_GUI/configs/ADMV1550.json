@@ -41,5 +41,11 @@
   "sequence": [],
   "use_sequence": false,
   "program_logic_path": "",
-  "register_read_array": []
+  "register_read_array": [],
+  "notes": {
+    "connections": "Hittite 0 LO  (Signal Generator) \u2192 LO\nHittite 1 RF  (Signal Generator) \u2192 RF\nFieldFox 0  (Spectrum Analyzer) \u2190 IF",
+    "sources": "Hittite 0 LO \u2013 20 GHz, 15 dBm\nHittite 1 RF \u2013 21 GHz, -10 dBm\nFieldFox 0 \u2013 Spectrum analyzer, center 2 GHz, span 3.5 GHz",
+    "monitoring": "FieldFox 0 \u2013 Record output spectrum",
+    "general": "Config: ADMV1550\nOutput tone: 1GHz@-20dBm"
+  }
 }

@@ -51,5 +51,11 @@
   "sequence": [],
   "use_sequence": false,
   "program_logic_path": "",
-  "register_read_array": []
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0  (Power Supply)\n    CH1 \"CH1\" \u2192 3.3 V, 1 A limit, VDD\n    CH2 \"CH2\" \u2192 -3.3 V, 1 A limit, VSS(neg)\n    CH3 \"CH3\" \u2192 0 V, 1 A limit\nHittite 0  (Signal Generator) \u2192 ATTIN\nFieldFox 0  (Spectrum Analyzer) \u2190 ATTOUT",
+    "sources": "Keithley 0 \u2013 DUT power: CH1 @ 3.3 V, CH2 @ 3.3 V\nHittite 0 \u2013 5 GHz, 0 dBm\nFieldFox 0 \u2013 Spectrum analyzer, center 5 GHz, span 10 GHz",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 \u2013 Record output spectrum",
+    "general": "Config: ADRF5730\nOutput: -35dBm@5GHz"
+  }
 }
