@@ -81,9 +81,9 @@
   "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
   "register_read_array": [],
   "notes": {
-    "connections": "Hittite 0 RF C  (Signal Generator) \u2013 RF OUT \u2192 DUT\nKeithley 0  (Power Supply)\n    CH1 \"CH1 VSS (-3.3v)\" \u2192 3.3 V, 1.5 A limit\n    CH2 \"CH2 VDD\" \u2192 3.3 V, 1.5 A limit\n    CH3 \"CH3\" \u2192 0 V, 0.0 A limit\nFieldFox 0 RF1  (Spectrum Analyzer) \u2013 PORT 1 \u2190 DUT output",
-    "sources": "Hittite 0 RF C \u2013 10 GHz, 0 dBm\nKeithley 0 \u2013 DUT power: CH1 VSS (-3.3v) @ 3.3 V, CH2 VDD @ 3.3 V\nFieldFox 0 RF1 \u2013 Spectrum analyzer, center 10 GHz, span 2 GHz",
-    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 RF1 \u2013 Record output spectrum\nTone @ 10GHz, -5dBm",
+    "connections": "Hittite 0 RF C  (Signal Generator) \u2013 RF OUT \u2192 DUT\nKeithley 0  (Power Supply)\n    CH1 \"CH1 VDD \" \u2192 3.3 V, 1.5 A limit\n    CH2 \"CH2 VSS(-3.3v)\" \u2192 3.3 V, 1.5 A limit\n    CH3 \"CH3\" \u2192 0 V, 0.0 A limit\nFieldFox 0 RF1  (Spectrum Analyzer) \u2013 PORT 1 \u2190 DUT output",
+    "sources": "Hittite 0 RF C \u2013 10 GHz, 0 dBm\nKeithley 0 \u2013 DUT power: CH1 VDD (3.3v) @ 3.3 V, CH2 VSS(neg) @ 3.3 V\nFieldFox 0 RF1 \u2013 Spectrum analyzer, center 10 GHz, span 2 GHz",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 RF1 \u2013 Record output spectrum\nTone @ 10GHz, -20dBm",
     "general": "Config: ADRF5030\n"
   }
 }

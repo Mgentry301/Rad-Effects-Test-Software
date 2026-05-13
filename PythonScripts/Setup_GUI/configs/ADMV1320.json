@@ -12,14 +12,14 @@
           "name": "3.3V"
         },
         "2": {
-          "voltage": "1.8",
+          "voltage": "3.3",
           "current": "1.5",
           "output": false,
           "name": "1.8V"
         },
         "3": {
-          "voltage": "0.0",
-          "current": "0.0",
+          "voltage": "5.0",
+          "current": "3.0",
           "output": false,
           "name": "CH3"
         }
@@ -28,35 +28,32 @@
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
-      "name": "Hittite 0 LO",
-      "dut_port": "LO",
+      "name": "Hittite 0 IF_IN",
       "settings": {
-        "frequency": "30",
+        "frequency": "6",
         "freq_unit": "GHz",
-        "power": "5",
+        "power": "-25",
         "output": false
       }
     },
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 1",
-      "name": "Hittite 1 RF",
-      "dut_port": "RF",
+      "name": "Hittite 1 LO",
       "settings": {
-        "frequency": "35",
+        "frequency": "9",
         "freq_unit": "GHz",
-        "power": "-10",
+        "power": "-5",
         "output": false
       }
     },
     {
       "type": "Keysight FieldFox",
-      "resource": "alias:FieldFox 0",
-      "name": "FieldFox 0 IF",
-      "dut_port": "IF",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "FieldFox 0 RF",
       "settings": {
-        "center": "5",
-        "span": "6",
+        "center": "15",
+        "span": "4",
         "start": "",
         "stop": "",
         "unit": "GHz"
@@ -69,19 +66,19 @@
       "channels": {
         "1": {
           "voltage": "0.0",
-          "current": "1.0",
+          "current": "0.0",
           "output": false,
-          "name": "Beam"
+          "name": "CG1"
         },
         "2": {
           "voltage": "0.0",
-          "current": "1.0",
+          "current": "0.0",
           "output": false,
           "name": "CH2"
         },
         "3": {
           "voltage": "0.0",
-          "current": "1.0",
+          "current": "0.0",
           "output": false,
           "name": "CH3"
         }
@@ -102,7 +99,7 @@
         "2": {
           "mode": "CR",
           "value": "10000",
-          "input": true,
+          "input": false,
           "ramp_enabled": false,
           "rise_time": "0"
         }
@@ -114,10 +111,67 @@
     "Delay: 1.0 s",
     "KeithleyChannel: Keithley 0 Channel 2",
     "Delay: 1.0 s",
-    "Instrument: Hittite 0 LO",
-    "Instrument: Hittite 1 RF"
+    "KeithleyChannel: Keithley 0 Channel 3",
+    "Instrument: Hittite 0 IF",
+    "Instrument: Hittite 1 LO"
   ],
   "use_sequence": true,
-  "program_logic_path": "",
-  "register_read_array": []
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
+  "register_read_array": [
+    0,
+    10,
+    19,
+    312,
+    315,
+    318,
+    512,
+    514,
+    515,
+    516,
+    519,
+    520,
+    521,
+    641,
+    642,
+    643,
+    644,
+    645,
+    646,
+    647,
+    650,
+    651,
+    672,
+    673,
+    679,
+    768,
+    770,
+    772,
+    773,
+    774,
+    1536,
+    1537,
+    1546,
+    1792,
+    1793,
+    1794,
+    1795,
+    1920,
+    1921,
+    2048,
+    2049,
+    2050,
+    2051,
+    2052,
+    2053,
+    2054,
+    2055,
+    2056,
+    2144
+  ],
+  "notes": {
+    "connections": "Keithley 0  (Power Supply)\n    CH1 \"3.3a\" \u2192 3.3 V, 1.0 A limit\n    CH2 \"3.3b\" \u2192 3.3 V, 1.0 A limit\n    CH3 \"P5V\" \u2192 5.0 V, 1.0 A limit\nHittite 0 LO  (Signal Generator) \u2192 LO\nHittite 1 RF  (Signal Generator) \u2192 RF\nFieldFox 0 IF  (Spectrum Analyzer) \u2190 IF\nKeithley 1  (Power Supply)\n    CH1 \"Beam\" \u2192 0.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 1.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 1.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 CR mode, 10000, input ON",
+    "sources": "Keithley 0 \u2013 DUT power: 3.3V @ 3.3 V, 1.8V @ 1.8 V\nHittite 0 LO \u2013 30 GHz, 5 dBm\nHittite 1 RF \u2013 35 GHz, -10 dBm\nFieldFox 0 IF \u2013 Spectrum analyzer, center 5 GHz, span 6 GHz\nKeithley 1 \u2013 DUT power supply (channels unused or 0 V)\nKeysight EL 0 \u2013 Electronic load",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 IF \u2013 Record output spectrum\nKeithley 1 \u2013 Monitor supply currents on all active channels\nKeysight EL 0 \u2013 Monitor load currents / voltages",
+    "general": "Config: ADMV1320\nBand 3, IF low band, USB\nPower-up sequence (order matters):\n    KeithleyChannel: Keithley 0 Channel 1\n    Delay: 1.0 s\n    KeithleyChannel: Keithley 0 Channel 2\n    Delay: 1.0 s\n    Instrument: Hittite 0 LO\n    Instrument: Hittite 1 RF"
+  }
 }
