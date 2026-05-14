@@ -1,0 +1,116 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "3.3",
+          "current": "1.0",
+          "output": false,
+          "name": "3.3V"
+        },
+        "2": {
+          "voltage": "1.8",
+          "current": "1.0",
+          "output": false,
+          "name": "1.8V"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0 REF_CLK",
+      "dut_port": "J104",
+      "settings": {
+        "frequency": "100",
+        "freq_unit": "MHz",
+        "power": "0",
+        "output": false
+      }
+    },
+    {
+      "type": "Keysight FieldFox",
+      "resource": "alias:FieldFox 0",
+      "name": "FieldFox 0 DAC_OUT",
+      "dut_port": "DAC_OUT",
+      "settings": {
+        "center": "200",
+        "span": "400",
+        "start": "",
+        "stop": "",
+        "unit": "MHz"
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "Beam"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CR",
+          "value": "10000",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 0 Channel 1",
+    "Delay: 0.5 s",
+    "KeithleyChannel: Keithley 0 Channel 2",
+    "Delay: 0.5 s",
+    "Instrument: Hittite 0 REF_CLK"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \"3.3V\" -> EVB P300 Pin 2 (3.3 V rail)\n    CH2 \"1.8V\" -> EVB P300 Pin 4 (1.8 V rail)\n    Return/GND -> EVB P300 Pins 1 and 3\nHittite 0 REF_CLK (Signal Generator) -> J104 REF CLK input\nFieldFox 0 DAC_OUT (Spectrum Analyzer) <-J108 DAC output path after balun/filter\nUSB -> EVB USB port for SPI control (factory PC-control mode)",
+    "sources": "UG-based defaults:\n- Supplies: P300 requires 3.3 V and 1.8 V rails plus ground\n- REF CLK: Apply external clock at J104; default example uses 100 MHz\n- Internal PLL optional; PFD max is 125 MHz when PLL is enabled\n- SYNC_CLK should run (about SYSCLK/24) as a quick validity check",
+    "monitoring": "Keithley 0 -> monitor 3.3 V and 1.8 V currents during run\nFieldFox 0 DAC_OUT -> monitor single-tone/sweep output spectrum\nIf SYNC_CLK is absent, check power rails and REF CLK validity",
+    "general": "Config: AD9914\nBased on AD9914/AD9915 EVB User Guide.\nRecommended bring-up flow:\n1) Apply 3.3 V and 1.8 V rails\n2) Apply REF CLK to J104\n3) Open GUI\n4) Plug in USB prom PC\n5) Load AD9914 Setup file in GUI\n6) Press Load\nPLL lock issues on BRD 2"
+  }
+}
