@@ -9,7 +9,7 @@
           "voltage": "5.0",
           "current": "1.0",
           "output": false,
-          "name": "VIN_4p5_to_18V"
+          "name": "PVIN1"
         },
         "2": {
           "voltage": "0.0",
@@ -35,22 +35,20 @@
           "value": "0.1",
           "input": false,
           "ramp_enabled": false,
-          "rise_time": "0",
-          "name": "VOUT3"
+          "rise_time": "0"
         },
         "2": {
           "mode": "Disable",
           "value": "0.1",
           "input": false,
           "ramp_enabled": false,
-          "rise_time": "0",
-          "name": "CH2_unused"
+          "rise_time": "0"
         }
       }
     },
     {
       "type": "Keysight EL34243A",
-      "resource": "alias:Keysight EL 1",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
       "name": "Keysight EL 1",
       "channels": {
         "1": {
@@ -58,22 +56,48 @@
           "value": "0.1",
           "input": false,
           "ramp_enabled": false,
-          "rise_time": "0",
-          "name": "VOUT1"
+          "rise_time": "0"
         },
         "2": {
           "mode": "CC",
           "value": "0.1",
           "input": false,
           "ramp_enabled": false,
-          "rise_time": "0",
-          "name": "VOUT2"
+          "rise_time": "0"
         }
       }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "",
-  "register_read_array": []
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADP5055.py",
+  "register_read_array": [
+    25,
+    126,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219,
+    220,
+    221,
+    222,
+    223,
+    224,
+    225,
+    226
+  ],
+  "notes": {
+    "connections": "Keithley 0  (Power Supply)\n    CH1 \"VIN_4p5_to_18V\" \u2192 5.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 0.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 0.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 Disable mode, 0.1, input OFF\nKeysight EL 1  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 CC mode, 0.1, input OFF",
+    "sources": "Keithley 0 \u2013 DUT power: VIN_4p5_to_18V @ 5.0 V\nKeysight EL 0 \u2013 Electronic load\nKeysight EL 1 \u2013 Electronic load",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nKeysight EL 0 \u2013 Monitor load currents / voltages\nKeysight EL 1 \u2013 Monitor load currents / voltages\nRegister reads: CAPABILITY(0x19), STATUS_CML(0x7E), MODEL_ID(0xD0), CTRL123(0xD1),\n  VID_GO(0xD2), CTRL_MODE1(0xD3), CTRL_MODE2(0xD4), DLY1(0xD5), DLY2(0xD6), DLY3(0xD7),\n  VID1(0xD8), VID2(0xD9), VID3(0xDA), DVS_CFG(0xDB), DVS_LIM1(0xDC), DVS_LIM2(0xDD),\n  DVS_LIM3(0xDE), FT_CFG(0xDF), PG_CFG(0xE0), PG_READ(0xE1), STATUS_LCH(0xE2)",
+    "general": "Config: ADP5055\nPMBus I2C address: 0x70 (ADDR=GND) | 0x72 (ADDR=VDDIO) | 0x74 (ADDR=Float)\nRegister recording via ACE \u2013 press Record in Setup_GUI to log all registers to Excel"
+  }
 }

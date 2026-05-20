@@ -31,9 +31,9 @@
       "name": "Hittite 0 REF_CLK",
       "dut_port": "J104",
       "settings": {
-        "frequency": "100",
-        "freq_unit": "MHz",
-        "power": "0",
+        "frequency": "2",
+        "freq_unit": "GHz",
+        "power": "3",
         "output": false
       }
     },
@@ -105,12 +105,41 @@
     "Instrument: Hittite 0 REF_CLK"
   ],
   "use_sequence": true,
-  "program_logic_path": "",
-  "register_read_array": [],
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\AD9914_Linduino.py",
+  "register_read_array": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27
+  ],
   "notes": {
-    "connections": "Keithley 0 (Power Supply)\n    CH1 \"3.3V\" -> EVB P300 Pin 2 (3.3 V rail)\n    CH2 \"1.8V\" -> EVB P300 Pin 4 (1.8 V rail)\n    Return/GND -> EVB P300 Pins 1 and 3\nHittite 0 REF_CLK (Signal Generator) -> J104 REF CLK input\nFieldFox 0 DAC_OUT (Spectrum Analyzer) <-J108 DAC output path after balun/filter\nUSB -> EVB USB port for SPI control (factory PC-control mode)",
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \"3.3V\" -> EVB P300 Pin 2 (3.3 V rail)\n    CH2 \"1.8V\" -> EVB P300 Pin 4 (1.8 V rail)\n    Return/GND -> EVB P300 Pins 1 and 3\nHittite 0 REF_CLK (Signal Generator) -> J104 REF CLK input\nFieldFox 0 DAC_OUT (Spectrum Analyzer) <-J108 DAC output path after balun/filter\nUSB -> EVB USB port for SPI control (factory PC-control mode)\n\nLinduino DC2026 (SPI + control, JP3 = 3.3 V) -> EVB P101C / P102 (3.3 V buffered side)\n    USB -> PC (COM6 by default, 115200 8N1)\n    D13 SCK   -> P101C 39 (SCLK)\n    D11 MOSI  -> P101C 38 (SDIO)\n    D12 MISO  <- P101C 37 (SDO)\n    D10 CS    -> P101C 40 (CSB)\n    D9        -> IO_UPDATE pin (rising edge latches)\n    D6        -> SYNC_IO pin (resets SPI engine, preserves regs)\n    D7        -> P102 pin 3 MASTER_RESET (active high; idle LOW)\n    D8        -> P102 pin 1 EXT_PWR_DWN  (active high; idle LOW)\n    GND       -> any EVB GND on P101A\n    Recommended: 10 k\u03a9 pulldown from P102 pin 3 (MASTER_RESET) to GND\n    so a Linduino reboot can't float the line and reset the AD9914.\nEVB jumpers for Linduino mode:\n    P202 = Enable, P203/P204/P205 = Disable, IOCFG = 1000.",
     "sources": "UG-based defaults:\n- Supplies: P300 requires 3.3 V and 1.8 V rails plus ground\n- REF CLK: Apply external clock at J104; default example uses 100 MHz\n- Internal PLL optional; PFD max is 125 MHz when PLL is enabled\n- SYNC_CLK should run (about SYSCLK/24) as a quick validity check",
     "monitoring": "Keithley 0 -> monitor 3.3 V and 1.8 V currents during run\nFieldFox 0 DAC_OUT -> monitor single-tone/sweep output spectrum\nIf SYNC_CLK is absent, check power rails and REF CLK validity",
-    "general": "Config: AD9914\nBased on AD9914/AD9915 EVB User Guide.\nRecommended bring-up flow:\n1) Apply 3.3 V and 1.8 V rails\n2) Apply REF CLK to J104\n3) Open GUI\n4) Plug in USB prom PC\n5) Load AD9914 Setup file in GUI\n6) Press Load\nPLL lock issues on BRD 2"
+    "general": "Config: AD9914\nBased on AD9914/AD9915 EVB User Guide.\nRecommended bring-up flow:\n1) Apply 3.3 V and 1.8 V rails\n2) Apply REF CLK to J104\n3) Open GUI\n4) Plug in USB prom PC\n5) Load AD9914 Setup file in GUI\n6) Press Load\nPLL lock issues on BRD 2\n\n\nCheetah pin\tSignal\t\u2192 P101C pin\n7\tSCLK\t39\n8\tMOSI\t38 (SDIO)\n5\tMISO\t37 (SDO)\n9\tSS1\t40 (CSB)\n2\tGND\tany P101A pin (e.g., 40)\n10\tGND\tany other P101A pin (e.g., 1)\n1\tSS2\tleave open\n3\tSS3\tleave open\n4, 6\tNC/+5V\tleave open"
   }
 }

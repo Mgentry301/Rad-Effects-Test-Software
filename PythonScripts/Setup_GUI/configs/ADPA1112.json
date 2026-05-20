@@ -107,9 +107,9 @@
   "program_logic_path": "",
   "register_read_array": [],
   "notes": {
-    "connections": "Keithley 0  (Power Supply)\n    CH1 \"VGG1 (neg)\" \u2192 3.0 V, 0.1 A limit\n    CH2 \"VDD1/VDD2\" \u2192 28.0 V, 0.6 A limit\n    CH3 \"VREF/VDET_BIAS\" \u2192 5.0 V, 0.1 A limit\nHittite 0 RFIN  (Signal Generator) \u2192 RFIN\nFieldFox 0 RFOUT  (Spectrum Analyzer) \u2190 RFOUT\nKeithley 1  (Power Supply)\n    CH1 \"Beam\" \u2192 0.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 1.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 1.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 CR mode, 10000, input ON",
-    "sources": "Keithley 0 \u2013 DUT power: VGG1 (neg) @ 3.0 V, VDD1/VDD2 @ 28.0 V, VREF/VDET_BIAS @ 5.0 V\nHittite 0 RFIN \u2013 10 GHz, -15 dBm\nFieldFox 0 RFOUT \u2013 Spectrum analyzer, center 10 GHz, span 20 GHz\nKeithley 1 \u2013 DUT power supply (channels unused or 0 V)\nKeysight EL 0 \u2013 Electronic load",
-    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 RFOUT \u2013 Record output spectrum\nKeithley 1 \u2013 Monitor supply currents on all active channels\nKeysight EL 0 \u2013 Monitor load currents / voltages",
-    "general": "Config: ADPA1112\nPower-up sequence (order matters):\n    KeithleyChannel: Keithley 0 Channel 1\n    Delay: 0.5 s\n    KeithleyChannel: Keithley 0 Channel 2\n    Delay: 0.5 s\n    KeithleyChannel: Keithley 0 Channel 3\n    Delay: 0.5 s\n    Instrument: Hittite 0 RFIN"
+    "connections": "Keithley 0  (Power Supply)\n    CH1 VDD1 \u2192 28.0 V, 3 A limit\n    CH2 VDD2 \u2192 28.0 V, 3 A limit\n    CH3 VGG1(neg) \u2192 3.0 V, 1 A limit\nHittite 0 RFIN  (Signal Generator) \u2192 RFIN\nFieldFox 0 RFOUT  (Spectrum Analyzer) \u2190 RFOUT\nKeithley 1  (Power Supply)\n    CH1 \"Beam\" \u2192 0.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 1.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 1.0 A limit\n",
+    "sources": "Keithley 0 \u2013 DUT power: VGG1 (neg) @ 3.0 V, VDD1/VDD2 @ 28.0 V, VREF/VDET_BIAS @ 5.0 V\nHittite 0 RFIN \u2013 10 GHz, -15 dBm\nFieldFox 0 RFOUT \u2013 Spectrum analyzer, center 10 GHz, span 20 GHz\nKeithley 1 \u2013 DUT power supply (channels unused or 0 V)",
+    "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nFieldFox 0 RFOUT \u2013 Record output spectrum\nKeithley 1 \u2013 Monitor supply currents on all active channels",
+    "general": "Config: ADPA1112\nPower-up sequence (order matters):\n    KeithleyChannel: Keithley 0 Channel 3\n    Delay: 0.5 s\n    KeithleyChannel: Keithley 0 Channel 1\n    KeithleyChannel: Keithley 0 Channel 2\n    Delay: 0.5 s\n    Instrument: Hittite 0 RFIN"
   }
 }

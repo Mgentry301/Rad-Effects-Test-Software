@@ -746,11 +746,66 @@ class RecordingMixin:
         except Exception:
             return ''
 
+    @QtCore.pyqtSlot(str)
+    def _show_register_backend_error(self, msg: str) -> None:
+        QtWidgets.QMessageBox.critical(
+            self, 'Register backend failed', msg
+        )
+
+    def _resolve_program_logic_path(self) -> str:
+        """Return the program_logic_path from the active config file, if any."""
+        try:
+            cfg_name = self.load_combo.currentText() if hasattr(self, 'load_combo') else ''
+            if not cfg_name:
+                return ''
+            cfg_path = os.path.join(self.configs_dir, cfg_name)
+            if not os.path.exists(cfg_path):
+                return ''
+            with open(cfg_path, 'r') as f:
+                return json.load(f).get('program_logic_path', '') or ''
+        except Exception:
+            return ''
+
+    def _load_custom_register_backend(self, logic_path: str):
+        """
+        If the program_logic file defines `open_register_client()` and
+        `read_register(client, addr) -> int`, import and return them.
+
+        Returns (open_fn, read_fn) or (None, None) when not available.
+        """
+        try:
+            if not logic_path or not os.path.exists(logic_path):
+                return None, None
+            import importlib.util
+            mod_name = '_reg_logic_' + os.path.splitext(os.path.basename(logic_path))[0]
+            spec = importlib.util.spec_from_file_location(mod_name, logic_path)
+            if spec is None or spec.loader is None:
+                return None, None
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            open_fn = getattr(mod, 'open_register_client', None)
+            read_fn = getattr(mod, 'read_register', None)
+            if callable(open_fn) and callable(read_fn):
+                return open_fn, read_fn
+            return None, None
+        except Exception as e:
+            try:
+                self._log(f'Custom register backend load failed for "{logic_path}": {e}')
+            except Exception:
+                pass
+            return None, None
+
     def _start_register_recording(self, excel_path: str, registers: list, rate_cb, context_path: str = ''):
         """Start register recording in background with a non-blocking Excel writer."""
         from openpyxl import Workbook, load_workbook
         from openpyxl.styles import PatternFill
         from openpyxl.formatting.rule import CellIsRule
+
+        # Resolve a possible custom (non-ACE) register backend defined in the
+        # active config's program_logic_path module.
+        custom_open, custom_read = self._load_custom_register_backend(
+            self._resolve_program_logic_path()
+        )
 
 
         reg_list: list[int] = []
@@ -825,7 +880,10 @@ class RecordingMixin:
             ws.cell(row=baseline_row, column=1, value='EXPECTED')
             ws.cell(row=baseline_row, column=2, value=0)
             for ci, v in enumerate(vals, start=3):
-                ws.cell(row=baseline_row, column=ci, value=v)
+                # Match the hex-string format used for data rows so the
+                # conditional formatting below compares like-with-like.
+                cell_val = f'0x{v:X}' if isinstance(v, int) else v
+                ws.cell(row=baseline_row, column=ci, value=cell_val)
             # Apply conditional formatting: highlight cells that differ from EXPECTED
             for ci in range(3, 3 + len(vals)):
                 col_letter = get_column_letter(ci)
@@ -905,45 +963,71 @@ class RecordingMixin:
             except Exception:
                 pass
             recording_start_time = time.time()
-            try:
-                import sys as _sys
-                ace_path = r'C:\Program Files\Analog Devices\ACE\Client'
-                if ace_path not in _sys.path:
-                    _sys.path.append(ace_path)
-                import clr  # type: ignore
-                clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
-                clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
-                from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
-                manager = ClientManager.Create()
-                client = manager.CreateRequestClient('localhost:2357')
+            client = None
+            using_custom_backend = False
+            if custom_open is not None and custom_read is not None:
                 try:
-                    self._log(f'Register recording: ACE client connected (registers={len(reg_list)})')
-                except Exception:
-                    pass
-                if context_path:
+                    client = custom_open()
+                    using_custom_backend = True
                     try:
-                        client.ContextPath = context_path
-                        try:
-                            self._log(f'Register recording ContextPath set: {context_path}')
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        try:
-                            self._log(f'Failed to set ContextPath "{context_path}": {e}')
-                        except Exception:
-                            pass
-                else:
-                    try:
-                        self._log('Warning: no ContextPath configured for register recording (set register_context_path in config or program_logic_path with ContextPath=...).')
+                        self._log(f'Register recording: custom backend connected (registers={len(reg_list)})')
                     except Exception:
                         pass
-            except Exception as e:
+                except Exception as e:
+                    try:
+                        import traceback as _tb
+                        self._log(f'Custom register backend open() failed: {e}\n{_tb.format_exc()}')
+                    except Exception:
+                        pass
+                    try:
+                        QtCore.QMetaObject.invokeMethod(
+                            self, '_show_register_backend_error',
+                            QtCore.Qt.QueuedConnection,
+                            QtCore.Q_ARG(str, str(e)),
+                        )
+                    except Exception:
+                        pass
+                    return
+            else:
                 try:
-                    import traceback as _tb
-                    self._log(f'ACE connection failed for register recording: {e}\n{_tb.format_exc()}')
-                except Exception:
-                    pass
-                return
+                    import sys as _sys
+                    ace_path = r'C:\Program Files\Analog Devices\ACE\Client'
+                    if ace_path not in _sys.path:
+                        _sys.path.append(ace_path)
+                    import clr  # type: ignore
+                    clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+                    clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+                    from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
+                    manager = ClientManager.Create()
+                    client = manager.CreateRequestClient('localhost:2357')
+                    try:
+                        self._log(f'Register recording: ACE client connected (registers={len(reg_list)})')
+                    except Exception:
+                        pass
+                    if context_path:
+                        try:
+                            client.ContextPath = context_path
+                            try:
+                                self._log(f'Register recording ContextPath set: {context_path}')
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            try:
+                                self._log(f'Failed to set ContextPath "{context_path}": {e}')
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            self._log('Warning: no ContextPath configured for register recording (set register_context_path in config or program_logic_path with ContextPath=...).')
+                        except Exception:
+                            pass
+                except Exception as e:
+                    try:
+                        import traceback as _tb
+                        self._log(f'ACE connection failed for register recording: {e}\n{_tb.format_exc()}')
+                    except Exception:
+                        pass
+                    return
             def _parse_register_value(raw_val):
                 """Convert a raw ACE register response to an integer."""
                 if hasattr(raw_val, 'strip'):
@@ -965,7 +1049,10 @@ class RecordingMixin:
                     values = []
                     for addr in reg_list:
                         try:
-                            val = _parse_register_value(client.ReadRegister(str(int(addr))))
+                            if using_custom_backend:
+                                val = int(custom_read(client, int(addr)))
+                            else:
+                                val = _parse_register_value(client.ReadRegister(str(int(addr))))
                         except Exception as err:
                             val = f'ERR:{err}'
                         values.append(val)
@@ -991,7 +1078,12 @@ class RecordingMixin:
                     except Exception:
                         pass
                     try:
-                        write_q.put_nowait([nowts, elapsed_s] + values)
+                        # Convert integer register values to hex strings for
+                        # readable Excel output (avoids scientific notation).
+                        # Non-int entries (e.g. 'ERR:...') pass through as-is.
+                        hex_values = [f'0x{v:X}' if isinstance(v, int) else v
+                                      for v in values]
+                        write_q.put_nowait([nowts, elapsed_s] + hex_values)
                     except queue.Full:
                         pass
                     sample_count += 1

@@ -224,15 +224,30 @@ class ProgrammingMixin:
                         self._buf = ''
 
             try:
-                ace_path = r'C:\\Program Files\\Analog Devices\\ACE\\Client'
-                if ace_path not in _sys.path:
-                    _sys.path.append(ace_path)
-                import clr  # type: ignore
-                clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
-                clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
-                from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
-                manager = ClientManager.Create()
-                client = manager.CreateRequestClient('localhost:2357')
+                # Pre-load the logic module so we can check for a SKIP_ACE
+                # flag. Backends that talk to their own hardware (e.g. a
+                # Linduino over serial) set SKIP_ACE = True so we don't
+                # require the ACE COM server to be running.
+                _spec_pre = _importlib_util.spec_from_file_location(
+                    'selected_logic_pre', logic_path)
+                _mod_pre = _importlib_util.module_from_spec(_spec_pre)
+                assert _spec_pre and _spec_pre.loader
+                _spec_pre.loader.exec_module(_mod_pre)  # type: ignore
+                _skip_ace = bool(getattr(_mod_pre, 'SKIP_ACE', False))
+
+                if _skip_ace:
+                    post_log('Logic declares SKIP_ACE; bypassing ACE client.')
+                    client = None
+                else:
+                    ace_path = r'C:\\Program Files\\Analog Devices\\ACE\\Client'
+                    if ace_path not in _sys.path:
+                        _sys.path.append(ace_path)
+                    import clr  # type: ignore
+                    clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+                    clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+                    from AnalogDevices.Csa.Remoting.Clients import ClientManager  # type: ignore
+                    manager = ClientManager.Create()
+                    client = manager.CreateRequestClient('localhost:2357')
 
                 _old_out, _old_err = _sys.stdout, _sys.stderr
                 _fw = _StreamForwarder(post_log)
@@ -257,7 +272,10 @@ class ProgrammingMixin:
                 _flush_thread.start()
 
                 try:
-                    self._log('ACE connection established; running logic...')
+                    if _skip_ace:
+                        self._log('Running logic without ACE client...')
+                    else:
+                        self._log('ACE connection established; running logic...')
                 except Exception:
                     try:
                         if hasattr(self, 'test_log'):
