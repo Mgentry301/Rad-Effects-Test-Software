@@ -486,10 +486,13 @@ class MainWindow(
             self._stop_all_recordings()
         except Exception:
             pass
-        # Turn off all instrument outputs/inputs before disconnecting so nothing
-        # is left energized after the app exits.
+        # Power off all instruments on close. Set env var
+        # POWER_OFF_ON_CLOSE=0 to suppress (leave bench in last
+        # commanded state for CLI debug / another GUI session).
+        import os as _os
+        _auto_off = _os.environ.get('POWER_OFF_ON_CLOSE', '1').strip().lower() not in ('0', 'false', 'no', 'off')
         try:
-            if hasattr(self, 'power_off_all'):
+            if _auto_off and hasattr(self, 'power_off_all'):
                 self.power_off_all()
                 try:
                     QtWidgets.QApplication.processEvents()

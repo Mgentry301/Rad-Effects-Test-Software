@@ -33,6 +33,12 @@
  *                          "OK" if CFR1 read-back matches, else "ERR ..."
  *   W AA DDDDDDDD       -> write 32-bit hex DDDDDDDD to addr AA (hex), "OK"
  *   R AA                -> read 32-bit reg AA, returns "DDDDDDDD" (hex)
+ *   WW AA DDDDDDDDDDDDDDDD -> write 64-bit hex (16 hex chars, MSB-first
+ *                          on the wire) to addr AA. Use for profile
+ *                          registers 0x0B..0x12 and any other 64-bit
+ *                          register where a 4-byte write would leave
+ *                          the FTW field unmodified. "OK"
+ *   RW AA               -> read 64-bit reg AA, returns 16 hex chars.
  *   BITRATE N           -> set SPI clock divisor (Arduino SPI divider:
  *                          2,4,8,16,32,64,128 -> 8/4/2/1/0.5/0.25/0.125 MHz
  *                          on a 16 MHz Uno), "OK"
@@ -82,6 +88,30 @@ static uint32_t spiReadReg(uint8_t addr) {
   digitalWrite(PIN_CS, HIGH);
   SPI.endTransaction();
   return val;
+}
+
+// AD9914 profile registers (0x0B..0x12) and DRG limits etc. are 64 bits
+// wide. Streaming only 4 data bytes leaves the FTW field unwritten, so
+// the DDS keeps using its default FTW regardless of what you "wrote".
+// These wide variants stream 8 data bytes per transaction.
+static void spiWriteRegWide(uint8_t addr, const uint8_t bytes[8]) {
+  uint8_t instr = addr & ADDR_MASK;
+  SPI.beginTransaction(spiSettings);
+  digitalWrite(PIN_CS, LOW);
+  SPI.transfer(instr);
+  for (uint8_t i = 0; i < 8; i++) SPI.transfer(bytes[i]);
+  digitalWrite(PIN_CS, HIGH);
+  SPI.endTransaction();
+}
+
+static void spiReadRegWide(uint8_t addr, uint8_t out[8]) {
+  uint8_t instr = READ_BIT | (addr & ADDR_MASK);
+  SPI.beginTransaction(spiSettings);
+  digitalWrite(PIN_CS, LOW);
+  SPI.transfer(instr);
+  for (uint8_t i = 0; i < 8; i++) out[i] = SPI.transfer(0);
+  digitalWrite(PIN_CS, HIGH);
+  SPI.endTransaction();
 }
 
 static void pulseIOUpdate() {
@@ -205,6 +235,39 @@ static void handleLine(char *line) {
     uint32_t d = spiReadReg((uint8_t)(a & 0x7F));
     char tmp[12];
     snprintf(tmp, sizeof(tmp), "%08lX", (unsigned long)d);
+    Serial.println(tmp);
+    return;
+  }
+  if (!strcmp(line, "WW")) {
+    if (!arg) { Serial.println(F("ERR ww-args")); return; }
+    char *v = strchr(arg, ' ');
+    if (!v) { Serial.println(F("ERR ww-args")); return; }
+    *v = 0; v++;
+    uint32_t a;
+    if (!parseHex(arg, a)) { Serial.println(F("ERR ww-hex")); return; }
+    // v should be exactly 16 hex chars (64 bits), MSB-first on wire.
+    if (strlen(v) != 16) { Serial.println(F("ERR ww-len")); return; }
+    uint8_t bytes[8];
+    for (uint8_t i = 0; i < 8; i++) {
+      char pair[3] = { v[i*2], v[i*2+1], 0 };
+      uint32_t b;
+      if (!parseHex(pair, b)) { Serial.println(F("ERR ww-byte")); return; }
+      bytes[i] = (uint8_t)b;
+    }
+    spiWriteRegWide((uint8_t)(a & 0x7F), bytes);
+    Serial.println(F("OK"));
+    return;
+  }
+  if (!strcmp(line, "RW")) {
+    if (!arg) { Serial.println(F("ERR rw-args")); return; }
+    uint32_t a;
+    if (!parseHex(arg, a)) { Serial.println(F("ERR rw-hex")); return; }
+    uint8_t bytes[8];
+    spiReadRegWide((uint8_t)(a & 0x7F), bytes);
+    char tmp[20];
+    snprintf(tmp, sizeof(tmp), "%02X%02X%02X%02X%02X%02X%02X%02X",
+             bytes[0], bytes[1], bytes[2], bytes[3],
+             bytes[4], bytes[5], bytes[6], bytes[7]);
     Serial.println(tmp);
     return;
   }

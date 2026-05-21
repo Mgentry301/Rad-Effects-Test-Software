@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 from typing import List, Optional
 
@@ -67,6 +68,66 @@ DEFAULT_BAUD = 115200
 DEFAULT_BOOT_DELAY_S = 2.0
 ADDR_MASK = 0x7F
 REGISTER_WIDTH = 4
+
+# Sidecar file that stores the measured SYSCLK after each power cycle.
+# Lives next to this script so it travels with the repo.
+CALIBRATION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "ad9914_calibration.json")
+
+
+def _load_calibration() -> Optional[float]:
+    """Return the cached measured SYSCLK in Hz, or None if unavailable.
+
+    The AD9914's analog REF doubler / divider state latches randomly at
+    supply ramp, so the same CFR3=0 write can produce different SYSCLKs
+    on different boards or different power-ons. After each power cycle,
+    run --calibrate with the observed tone peak so we can compensate
+    via FTW math without touching the analog state.
+    """
+    try:
+        import json
+        with open(CALIBRATION_PATH, 'r') as fh:
+            data = json.load(fh)
+        sysclk = float(data.get("sysclk_hz", 0))
+        ts = data.get("timestamp", "?")
+        if sysclk > 0:
+            print(f"[AD9914] Loaded calibration: SYSCLK={sysclk/1e9:.6f} GHz "
+                  f"(stored {ts})")
+            return sysclk
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        print(f"[AD9914] Failed to read calibration {CALIBRATION_PATH}: {exc}")
+    return None
+
+
+def _save_calibration(sysclk_hz: float, observed_peak_hz: float,
+                      target_peak_hz: float, ftw: int,
+                      ref_clk_hz: float) -> None:
+    import json
+    import datetime
+    data = {
+        "sysclk_hz": float(sysclk_hz),
+        "observed_peak_hz": float(observed_peak_hz),
+        "target_peak_hz": float(target_peak_hz),
+        "ftw": int(ftw),
+        "ref_clk_hz": float(ref_clk_hz),
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    with open(CALIBRATION_PATH, 'w') as fh:
+        json.dump(data, fh, indent=2)
+    print(f"[AD9914] Calibration saved to {CALIBRATION_PATH}")
+    print(f"[AD9914]   measured SYSCLK = {sysclk_hz/1e9:.6f} GHz "
+          f"(from {observed_peak_hz/1e6:.3f} MHz observed for "
+          f"{target_peak_hz/1e6:.3f} MHz target)")
+
+
+def _clear_calibration() -> None:
+    try:
+        os.remove(CALIBRATION_PATH)
+        print(f"[AD9914] Calibration file removed: {CALIBRATION_PATH}")
+    except FileNotFoundError:
+        print("[AD9914] No calibration file to remove.")
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +178,11 @@ class LinduinoClient:
                  boot_delay_s: Optional[float] = None,
                  timeout: float = 2.0,
                  suppress_arduino_reset: bool = False):
+        # Lock that serializes _cmd() from concurrent threads. The cached
+        # client is shared between programming_manager (worker thread) and
+        # recording_manager (read loop thread); without this lock their
+        # serial commands interleave and corrupt each other's responses.
+        self._cmd_lock = threading.Lock()
         port = port or _env_str("AD9914_LINDUINO_PORT", DEFAULT_PORT)
         baud = baud or _env_int("AD9914_LINDUINO_BAUD", DEFAULT_BAUD)
         if boot_delay_s is None:
@@ -158,7 +224,7 @@ class LinduinoClient:
             # Wait the full bootloader delay and try again before giving
             # up.
             print(f"[AD9914] First ID returned {ident!r}; waiting for "
-                  f"bootloader and retrying.", file=sys.stderr)
+                  f"bootloader and retrying.")
             time.sleep(boot_delay_s)
             try:
                 self._ser.reset_input_buffer()
@@ -171,28 +237,40 @@ class LinduinoClient:
                 f"Unexpected identifier from {port}: {ident!r}. "
                 "Is the AD9914_Linduino sketch loaded?"
             )
-        print(f"[AD9914] Linduino {port} @ {baud} : {ident}", file=sys.stderr)
+        print(f"[AD9914] Linduino {port} @ {baud} : {ident}")
 
         if init:
             resp = self._cmd("INIT", timeout=3.0)
             if resp != "OK":
                 # Don't raise -- caller may still want to use the client to
                 # debug. Just log loudly so the operator sees it.
-                print(f"[AD9914] INIT response: {resp}", file=sys.stderr)
+                print(f"[AD9914] INIT response: {resp}")
             else:
-                print("[AD9914] Linduino INIT OK (4-wire verified).",
-                      file=sys.stderr)
+                print("[AD9914] Linduino INIT OK (4-wire verified).")
 
     # -- low level ---------------------------------------------------------
     def _cmd(self, line: str, timeout: Optional[float] = None) -> str:
-        """Send one command line and return the single-line response."""
-        if timeout is not None:
-            self._ser.timeout = timeout
-        payload = (line + "\n").encode("ascii")
-        self._ser.write(payload)
-        self._ser.flush()
-        resp = self._ser.readline().decode("ascii", errors="replace").strip()
-        return resp
+        """Send one command line and return the single-line response.
+
+        Holds ``_cmd_lock`` for the entire write+read so concurrent
+        callers (e.g. programming and recording threads sharing the
+        cached client) don't interleave bytes on the wire.
+        """
+        # Lazy lock init -- a cached client instance from before the
+        # locking code was added will not have ``_cmd_lock``; create it
+        # on first use rather than crashing with AttributeError.
+        lock = getattr(self, "_cmd_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._cmd_lock = lock
+        with lock:
+            if timeout is not None:
+                self._ser.timeout = timeout
+            payload = (line + "\n").encode("ascii")
+            self._ser.write(payload)
+            self._ser.flush()
+            resp = self._ser.readline().decode("ascii", errors="replace").strip()
+            return resp
 
     # -- public API --------------------------------------------------------
     def write_register(self, addr: int, value: int,
@@ -214,6 +292,31 @@ class LinduinoClient:
         except ValueError as exc:
             raise IOError(
                 f"read 0x{addr:02X}: unexpected response {resp!r}"
+            ) from exc
+
+    def write_register_wide(self, addr: int, value64: int) -> None:
+        """Write a 64-bit register (e.g. AD9914 profile 0x0B-0x12).
+
+        ``value64`` is sent MSB-first as 8 bytes after the instruction
+        byte. For AD9914 profiles the layout is
+        [ASF(16) | Phase(16) | FTW(32)] from MSB to LSB.
+        """
+        addr &= ADDR_MASK
+        value64 &= 0xFFFFFFFFFFFFFFFF
+        resp = self._cmd(f"WW {addr:02X} {value64:016X}")
+        if resp != "OK":
+            raise IOError(f"write_wide 0x{addr:02X} failed: {resp}")
+
+    def read_register_wide(self, addr: int) -> int:
+        addr &= ADDR_MASK
+        resp = self._cmd(f"RW {addr:02X}")
+        if resp.startswith("ERR") or not resp:
+            raise IOError(f"read_wide 0x{addr:02X} failed: {resp!r}")
+        try:
+            return int(resp, 16)
+        except ValueError as exc:
+            raise IOError(
+                f"read_wide 0x{addr:02X}: unexpected response {resp!r}"
             ) from exc
 
     def master_reset(self) -> None:
@@ -262,12 +365,31 @@ class LinduinoClient:
 # ---------------------------------------------------------------------------
 # Recording-manager hooks
 # ---------------------------------------------------------------------------
-# Module-level cached client: programming opens it (with INIT) and we
-# keep it open so the recording path can reuse the same serial
-# connection. This avoids close/reopen cycles, which on some Windows
-# USB-serial drivers briefly pulse DTR -> Linduino reboot -> D7
-# (MASTER_RESET) tristates -> AD9914 master-resets and tone dies.
-_CACHED_CLIENT: Optional["LinduinoClient"] = None
+# Cached client: programming opens it (with INIT) and we keep it open
+# so the recording path can reuse the same serial connection. This
+# avoids close/reopen cycles, which on some Windows USB-serial drivers
+# briefly pulse DTR -> Linduino reboot -> D7 (MASTER_RESET) tristates
+# -> AD9914 master-resets and tone dies.
+#
+# IMPORTANT: Setup_GUI's programming_manager and recording_manager each
+# load this file via importlib.util.spec_from_file_location, which
+# creates a *separate* module object per call. That means a plain
+# module-level variable wouldn't be visible across the
+# programming->recording handoff. We stash the cached client on the
+# `sys` module instead so every importlib copy of this file sees it.
+_SYS_CACHE_ATTR = "_ad9914_linduino_cached_client"
+
+
+def _get_cached_client() -> Optional["LinduinoClient"]:
+    return getattr(sys, _SYS_CACHE_ATTR, None)
+
+
+def _set_cached_client(c: Optional["LinduinoClient"]) -> None:
+    if c is None:
+        if hasattr(sys, _SYS_CACHE_ATTR):
+            delattr(sys, _SYS_CACHE_ATTR)
+    else:
+        setattr(sys, _SYS_CACHE_ATTR, c)
 
 
 def _client_alive(c: Optional["LinduinoClient"]) -> bool:
@@ -277,6 +399,30 @@ def _client_alive(c: Optional["LinduinoClient"]) -> bool:
         return bool(c._ser and c._ser.is_open)
     except Exception:
         return False
+
+
+def _ensure_4wire(client: "LinduinoClient") -> None:
+    """Make sure the AD9914 is in 4-wire SPI mode so reads return real data.
+
+    If MASTER_RESET ever pulses (e.g. Linduino auto-reset floating D7
+    before setup() pulls it low), CFR1 returns to its default 0x00, which
+    puts the chip in 3-wire mode and SDO goes high-Z -> all reads come
+    back as 0xFFFFFFFF. Writing CFR1=0x02 + IO_UPDATE re-arms 4-wire
+    without disturbing the rest of the configuration.
+    """
+    try:
+        cfr1 = client.read_register(_ADDR_CFR1)
+    except Exception:
+        cfr1 = 0xFFFFFFFF
+    if cfr1 == 0xFFFFFFFF or (cfr1 & 0x02) == 0:
+        print(f"[AD9914] open_register_client: CFR1=0x{cfr1:08X} -> "
+              "forcing 4-wire mode (CFR1=0x02).")
+        try:
+            client.write_register(_ADDR_CFR1, 0x00000002)
+            client.io_update()
+            time.sleep(0.001)
+        except Exception as exc:
+            print(f"[AD9914] re-arm 4-wire failed: {exc}")
 
 
 def open_register_client() -> "LinduinoClient":
@@ -293,16 +439,19 @@ def open_register_client() -> "LinduinoClient":
     AD9914_LINDUINO_INIT=1 to opt back into INIT here for a fresh
     bring-up.
     """
-    global _CACHED_CLIENT
-    if _client_alive(_CACHED_CLIENT):
-        print("[AD9914] open_register_client: reusing cached client.",
-              file=sys.stderr)
-        return _CACHED_CLIENT  # type: ignore[return-value]
+    cached = _get_cached_client()
+    if _client_alive(cached):
+        print("[AD9914] open_register_client: reusing cached client.")
+        _ensure_4wire(cached)  # type: ignore[arg-type]
+        return cached  # type: ignore[return-value]
 
+    print("[AD9914] open_register_client: NO cached client -- opening "
+          "fresh serial port (this may briefly reboot the Linduino).")
     do_init = _env_bool("AD9914_LINDUINO_INIT", False)
-    _CACHED_CLIENT = LinduinoClient(init=do_init,
-                                    suppress_arduino_reset=True)
-    return _CACHED_CLIENT
+    client = LinduinoClient(init=do_init, suppress_arduino_reset=True)
+    _set_cached_client(client)
+    _ensure_4wire(client)
+    return client
 
 
 def read_register(client: LinduinoClient, addr: int) -> int:
@@ -316,8 +465,7 @@ def close_register_client(client: LinduinoClient) -> None:
     open so a subsequent recording session (or another programming
     pass) can reuse it without forcing an Arduino reboot.
     """
-    global _CACHED_CLIENT
-    if client is _CACHED_CLIENT:
+    if client is _get_cached_client():
         return
     client.close()
 
@@ -355,9 +503,10 @@ EXECUTE_MACRO_PLL_N      = 1
 EXECUTE_MACRO_CFR3       = None    # None -> auto from PLL_N (PLL mode only)
 # Empirical override: if set, FTW math uses this as the actual SYSCLK
 # regardless of mode. Use this when the measured tone doesn't match the
-# expected REF*N -- e.g. CFR3=0 doesn't fully bypass and the chip is
-# running 3.4 GHz instead of 2 GHz: set to 3.4e9 here.
-EXECUTE_MACRO_SYSCLK_HZ  = 3.4e9
+# expected REF*N. NORMALLY leave at None and use --calibrate after each
+# power cycle to populate the calibration sidecar (ad9914_calibration.json)
+# instead. A non-None value here takes precedence over the sidecar.
+EXECUTE_MACRO_SYSCLK_HZ  = None
 
 def execute_macro(client) -> None:
     """GUI hook: program the AD9914 for a single tone.
@@ -385,8 +534,12 @@ def execute_macro(client) -> None:
     # Empirical SYSCLK override (works in any mode): if set, force the
     # FTW math to use this as the real SYSCLK. Lets you trim out an
     # unexpected on-chip multiplier without touching CFR3.
-    if EXECUTE_MACRO_SYSCLK_HZ is not None:
-        eff_ref = float(EXECUTE_MACRO_SYSCLK_HZ) / float(eff_n)
+    # Priority: explicit constant > sidecar calibration file > nothing.
+    sysclk_override = EXECUTE_MACRO_SYSCLK_HZ
+    if sysclk_override is None:
+        sysclk_override = _load_calibration()
+    if sysclk_override is not None:
+        eff_ref = float(sysclk_override) / float(eff_n)
 
     sysclk = eff_ref * eff_n
     mode = 'PLL bypass' if EXECUTE_MACRO_PLL_BYPASS else 'PLL ON'
@@ -397,20 +550,21 @@ def execute_macro(client) -> None:
     if EXECUTE_MACRO_PLL_BYPASS:
         print(f"  >> Confirm Hittite REF_CLK is set to "
               f"{eff_ref/1e6:.3f} MHz at the J104 input.")
-    # Open with INIT=True so the firmware does master_reset + 4-wire
-    # SPI setup before we start writing registers, and CACHE the client
-    # so the subsequent recording path reuses the same serial
-    # connection. Closing+reopening the port can pulse DTR -> Arduino
-    # reboot -> AD9914 master-reset -> tone dies.
-    global _CACHED_CLIENT
-    if _client_alive(_CACHED_CLIENT):
-        try:
-            _CACHED_CLIENT.close()  # type: ignore[union-attr]
-        except Exception:
-            pass
-        _CACHED_CLIENT = None
-    lin = LinduinoClient(init=True)
-    _CACHED_CLIENT = lin
+    # Reuse the cached client if one is already open. Closing+reopening
+    # the serial port from underneath an active recording loop kills it
+    # ("OSError 9: handle invalid"). program_tone() drives master_reset
+    # + SYNC_IO + full register rewrite itself, so the firmware-side
+    # INIT step is unnecessary when we already have a live client. The
+    # client is cached on `sys` (see _SYS_CACHE_ATTR comment) so every
+    # importlib copy of this file shares it.
+    cached = _get_cached_client()
+    if _client_alive(cached):
+        print("[AD9914] execute_macro: reusing cached client (no port "
+              "close/reopen).")
+        lin = cached  # type: ignore[assignment]
+    else:
+        lin = LinduinoClient(init=True)
+        _set_cached_client(lin)
     try:
         program_tone(
             lin,
@@ -421,13 +575,12 @@ def execute_macro(client) -> None:
         )
         print(f"AD9914 programmed: {EXECUTE_MACRO_FREQ_HZ/1e6:.6f} MHz tone "
               f"on Profile 0.")
-    except Exception:
-        # Programming failed -- drop the cached client so a retry opens
-        # a fresh one.
-        try:
-            lin.close()
-        finally:
-            _CACHED_CLIENT = None
+    except Exception as exc:
+        # Programming failed. Do NOT close the cached client -- a
+        # recording loop on another thread is likely reading through it,
+        # and closing the serial port would crash that thread with
+        # "port that is not open". Just log and propagate.
+        print(f"[AD9914] execute_macro: programming failed: {exc}")
         raise
     # On success: leave the client open and cached for the recorder.
 
@@ -510,7 +663,7 @@ def program_tone(client: LinduinoClient,
     sysclk = float(ref_clk_hz) * float(pll_n)
     if sysclk < 1e9:
         print(f"[AD9914] WARNING: SYSCLK={sysclk/1e9:.3f} GHz is below the"
-              " AD9914 minimum (~1 GHz). PLL may not lock.", file=sys.stderr)
+              " AD9914 minimum (~1 GHz). PLL may not lock.")
     if freq_hz >= sysclk / 2:
         raise ValueError(
             f"freq_hz {freq_hz/1e6:.3f} MHz exceeds Nyquist for SYSCLK "
@@ -525,8 +678,7 @@ def program_tone(client: LinduinoClient,
 
     print(f"[AD9914] program_tone: f={freq_hz/1e6:.6f} MHz, "
           f"REF_CLK={ref_clk_hz/1e6:.3f} MHz, N={pll_n}, "
-          f"SYSCLK={sysclk/1e9:.3f} GHz, FTW=0x{ftw:08X}, CFR3=0x{cfr3:08X}",
-          file=sys.stderr)
+          f"SYSCLK={sysclk/1e9:.3f} GHz, FTW=0x{ftw:08X}, CFR3=0x{cfr3:08X}")
 
     client.master_reset()
     client.sync_io()
@@ -537,20 +689,41 @@ def program_tone(client: LinduinoClient,
     client.write_register(_ADDR_CFR3, cfr3)
     client.io_update()
     time.sleep(DEFAULT_PLL_LOCK_DELAY_S)  # let PLL acquire lock
-    client.write_register(_ADDR_PROFILE0_FTW, ftw)
+    # AD9914 profile registers (0x0B..0x12) are 64 bits wide, not 32:
+    #   [63:48] ASF (amplitude, 12-bit value in lower bits, 4 reserved)
+    #   [47:32] Phase offset
+    #   [31:0]  FTW
+    # Sending only 4 bytes leaves the FTW field unwritten -- that was a
+    # silent bug that caused the DDS to ignore every "FTW write" and
+    # output whatever default Profile 0 had on power-up.
+    asf = 0x0FFF  # full-scale amplitude
+    phase = 0x0000
+    profile_word = (asf << 48) | (phase << 32) | (ftw & 0xFFFFFFFF)
+    client.write_register_wide(_ADDR_PROFILE0_FTW, profile_word)
     client.io_update()
 
     if verify:
         try:
-            got_ftw = client.read_register(_ADDR_PROFILE0_FTW)
+            got_profile = client.read_register_wide(_ADDR_PROFILE0_FTW)
+            got_ftw  = got_profile & 0xFFFFFFFF
+            got_phase = (got_profile >> 32) & 0xFFFF
+            got_asf   = (got_profile >> 48) & 0xFFFF
+            got_cfr1 = client.read_register(_ADDR_CFR1)
+            got_cfr2 = client.read_register(_ADDR_CFR2)
             got_cfr3 = client.read_register(_ADDR_CFR3)
-            print(f"[AD9914] read-back FTW=0x{got_ftw:08X}, "
-                  f"CFR3=0x{got_cfr3:08X}", file=sys.stderr)
-            if got_ftw != ftw:
-                print("[AD9914] WARNING: FTW read-back mismatch!",
-                      file=sys.stderr)
+            print(f"[AD9914] read-back  CFR1=0x{got_cfr1:08X}  "
+                  f"CFR2=0x{got_cfr2:08X}  CFR3=0x{got_cfr3:08X}")
+            print(f"[AD9914] read-back  Profile0 ASF=0x{got_asf:04X} "
+                  f"Phase=0x{got_phase:04X} FTW=0x{got_ftw:08X}")
+            if got_ftw != (ftw & 0xFFFFFFFF):
+                print(f"[AD9914] WARNING: FTW read-back mismatch! "
+                      f"wrote 0x{ftw:08X}, got 0x{got_ftw:08X}")
+            if got_cfr3 != cfr3:
+                print(f"[AD9914] WARNING: CFR3 read-back mismatch! "
+                      f"wrote 0x{cfr3:08X}, got 0x{got_cfr3:08X} -- "
+                      f"chip may be ignoring writes or in a different mode.")
         except Exception as exc:
-            print(f"[AD9914] verify read failed: {exc}", file=sys.stderr)
+            print(f"[AD9914] verify read failed: {exc}")
 
     return ftw
 
@@ -581,7 +754,49 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Override CFR3 with explicit value (hex ok).")
     parser.add_argument("--addrs", nargs="*", type=lambda x: int(x, 0),
                         help="Addresses to read (default: all 0x00..0x1B).")
+    parser.add_argument("--calibrate", type=float, default=None,
+                        metavar="OBSERVED_PEAK_HZ",
+                        help="Calibrate after a power-cycle: pass the tone "
+                             "frequency you actually see on the spectrum "
+                             "analyzer right now (with EXECUTE_MACRO_FREQ_HZ "
+                             "as the target). Computes the chip's true "
+                             "SYSCLK and writes it to ad9914_calibration.json "
+                             "so subsequent program_tone calls compensate.")
+    parser.add_argument("--clear-calibration", action="store_true",
+                        help="Delete the calibration sidecar and exit.")
+    parser.add_argument("--show-calibration", action="store_true",
+                        help="Print the current calibration and exit.")
     args = parser.parse_args(argv)
+
+    # Calibration helpers don't need to touch the Linduino.
+    if args.clear_calibration:
+        _clear_calibration()
+        return 0
+    if args.show_calibration:
+        cal = _load_calibration()
+        if cal is None:
+            print("No calibration on file.")
+        return 0
+    if args.calibrate is not None:
+        # Re-derive the FTW that was last programmed (or would be
+        # programmed) from EXECUTE_MACRO_* settings, then back-solve the
+        # actual SYSCLK from the observed peak.
+        target = EXECUTE_MACRO_FREQ_HZ
+        ref    = EXECUTE_MACRO_REF_CLK_HZ
+        n      = 1 if EXECUTE_MACRO_PLL_BYPASS else EXECUTE_MACRO_PLL_N
+        assumed_sysclk = ref * n
+        ftw = int(round((float(target) / assumed_sysclk) * (1 << 32))) & 0xFFFFFFFF
+        # observed = ftw/2^32 * sysclk_actual  ->  sysclk_actual = observed * 2^32 / ftw
+        sysclk_actual = float(args.calibrate) * (1 << 32) / float(ftw)
+        _save_calibration(sysclk_hz=sysclk_actual,
+                          observed_peak_hz=args.calibrate,
+                          target_peak_hz=target,
+                          ftw=ftw,
+                          ref_clk_hz=ref)
+        print(f"[AD9914] Next program_tone for {target/1e6:.3f} MHz will "
+              f"use SYSCLK={sysclk_actual/1e9:.6f} GHz; expected FTW = "
+              f"0x{int(round(target/sysclk_actual*(1<<32)))&0xFFFFFFFF:08X}.")
+        return 0
 
     if args.port:
         os.environ["AD9914_LINDUINO_PORT"] = args.port
@@ -598,11 +813,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
         if args.program_tone is not None:
+            # If a calibration sidecar exists, prefer it over --ref-clk*N
+            # for the FTW math (this is the per-power-cycle correction
+            # for the AD9914's bistable analog startup state).
+            cal_sysclk = _load_calibration()
+            eff_ref = args.ref_clk
+            eff_n   = args.pll_n
+            if cal_sysclk is not None:
+                eff_ref = cal_sysclk / eff_n
             program_tone(
                 client,
                 freq_hz=args.program_tone,
-                ref_clk_hz=args.ref_clk,
-                pll_n=args.pll_n,
+                ref_clk_hz=eff_ref,
+                pll_n=eff_n,
                 cfr3=args.cfr3,
             )
             print(f"Tone programmed at {args.program_tone/1e6:.6f} MHz.")
