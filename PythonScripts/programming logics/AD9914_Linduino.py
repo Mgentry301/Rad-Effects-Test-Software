@@ -766,6 +766,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Delete the calibration sidecar and exit.")
     parser.add_argument("--show-calibration", action="store_true",
                         help="Print the current calibration and exit.")
+    parser.add_argument("--write", nargs=2, metavar=("ADDR", "VALUE"),
+                        default=None,
+                        help="Write a single 32-bit register: --write 0x00 0x02")
+    parser.add_argument("--read", type=lambda x: int(x, 0), default=None,
+                        metavar="ADDR",
+                        help="Read a single 32-bit register and print it.")
+    parser.add_argument("--iou", action="store_true",
+                        help="Pulse I/O Update and exit.")
     args = parser.parse_args(argv)
 
     # Calibration helpers don't need to touch the Linduino.
@@ -812,13 +820,39 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("Master reset pulse sent.")
             return 0
 
+        if args.write is not None:
+            waddr = int(args.write[0], 0)
+            wval  = int(args.write[1], 0) & 0xFFFFFFFF
+            client.write_register(waddr, wval)
+            print(f"WROTE 0x{waddr:02X} <= 0x{wval:08X}")
+            return 0
+
+        if args.iou:
+            client.io_update()
+            print("I/O Update pulsed.")
+            return 0
+
+        if args.read is not None:
+            v = client.read_register(args.read)
+            print(f"READ  0x{args.read:02X} => 0x{v:08X}")
+            return 0
+
         if args.program_tone is not None:
+            # PLL bypass shortcut: --cfr3 0 means SYSCLK = REF_CLK
+            # directly, so force N=1 unless the user explicitly set
+            # --pll-n. Without this, the default --pll-n=100 makes the
+            # FTW math compute SYSCLK = REF * 100 = nonsense.
+            eff_ref = args.ref_clk
+            eff_n   = args.pll_n
+            if args.cfr3 == 0 and "--pll-n" not in (argv or sys.argv):
+                if eff_n != 1:
+                    print(f"[AD9914] --cfr3 0 implies PLL bypass; forcing "
+                          f"--pll-n 1 (was {eff_n}).")
+                eff_n = 1
             # If a calibration sidecar exists, prefer it over --ref-clk*N
             # for the FTW math (this is the per-power-cycle correction
             # for the AD9914's bistable analog startup state).
             cal_sysclk = _load_calibration()
-            eff_ref = args.ref_clk
-            eff_n   = args.pll_n
             if cal_sysclk is not None:
                 eff_ref = cal_sysclk / eff_n
             program_tone(

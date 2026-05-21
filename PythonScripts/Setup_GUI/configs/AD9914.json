@@ -29,22 +29,20 @@
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
       "name": "Hittite 0 REF_CLK",
-      "dut_port": "J104",
       "settings": {
         "frequency": "2",
         "freq_unit": "GHz",
         "power": "3",
-        "output": false
+        "output": true
       }
     },
     {
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
       "name": "FieldFox 0 DAC_OUT",
-      "dut_port": "DAC_OUT",
       "settings": {
-        "center": "200",
-        "span": "400",
+        "center": "500",
+        "span": "1000",
         "start": "",
         "stop": "",
         "unit": "MHz"
@@ -52,7 +50,7 @@
     },
     {
       "type": "Keithley 2230",
-      "resource": "alias:Keithley 1",
+      "resource": "USB0::0x05E6::0x2230::9100413::INSTR",
       "name": "Keithley 1",
       "channels": {
         "1": {

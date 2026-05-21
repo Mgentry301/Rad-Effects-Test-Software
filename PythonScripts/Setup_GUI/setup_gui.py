@@ -486,11 +486,13 @@ class MainWindow(
             self._stop_all_recordings()
         except Exception:
             pass
-        # Power off all instruments on close. Set env var
-        # POWER_OFF_ON_CLOSE=0 to suppress (leave bench in last
-        # commanded state for CLI debug / another GUI session).
+        # Leave instrument outputs in their last commanded state on
+        # close so a separate tool (CLI debug, another GUI session) can
+        # use the bench without re-powering. Use the "Power Off All"
+        # button explicitly when you want everything de-energized.
+        # Set env var POWER_OFF_ON_CLOSE=1 to opt back into auto-off.
         import os as _os
-        _auto_off = _os.environ.get('POWER_OFF_ON_CLOSE', '1').strip().lower() not in ('0', 'false', 'no', 'off')
+        _auto_off = _os.environ.get('POWER_OFF_ON_CLOSE', '0').strip().lower() in ('1', 'true', 'yes', 'on')
         try:
             if _auto_off and hasattr(self, 'power_off_all'):
                 self.power_off_all()

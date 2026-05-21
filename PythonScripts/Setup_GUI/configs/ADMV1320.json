@@ -28,7 +28,7 @@
     {
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
-      "name": "Hittite 0 IF_IN",
+      "name": "Hittite 0 RF_IN",
       "settings": {
         "frequency": "6",
         "freq_unit": "GHz",
@@ -49,8 +49,8 @@
     },
     {
       "type": "Keysight FieldFox",
-      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
-      "name": "FieldFox 0 RF",
+      "resource": "alias:FieldFox 0",
+      "name": "FieldFox 0 IF",
       "settings": {
         "center": "15",
         "span": "4",
@@ -61,7 +61,7 @@
     },
     {
       "type": "Keithley 2230",
-      "resource": "alias:Keithley 1",
+      "resource": "USB0::0x05E6::0x2230::9100413::INSTR",
       "name": "Keithley 1",
       "channels": {
         "1": {
@@ -83,27 +83,6 @@
           "name": "CH3"
         }
       }
-    },
-    {
-      "type": "Keysight EL34243A",
-      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
-      "name": "Keysight EL 0",
-      "channels": {
-        "1": {
-          "mode": "CC",
-          "value": "0.1",
-          "input": false,
-          "ramp_enabled": false,
-          "rise_time": "0"
-        },
-        "2": {
-          "mode": "CR",
-          "value": "10000",
-          "input": false,
-          "ramp_enabled": false,
-          "rise_time": "0"
-        }
-      }
     }
   ],
   "sequence": [
@@ -116,7 +95,8 @@
     "Instrument: Hittite 1 LO"
   ],
   "use_sequence": true,
-  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8818.py",
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV1320.py",
+  "register_context_path": "\\System\\Subsystem_1\\ADMV1320 Board\\ADMV1320",
   "register_read_array": [
     0,
     10,
