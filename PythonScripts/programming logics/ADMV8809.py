@@ -1,8 +1,45 @@
+# Generated code compatible with Python 2.7+
+
+## Copyright (c) 2026 by Analog Devices, Inc.  All rights reserved.  This software is proprietary to Analog Devices, Inc. and its licensors.
+## This software is provided on an 'as is' basis without any representations, warranties, guarantees or liability of any kind.
+## Use of the software is subject to the terms and conditions of the Clear BSD License ( https://spdx.org/licenses/BSD-3-Clause-Clear.html ).
+
+# Requirements:
+#  - pythonnet
+
+
+import sys
+sys.path.append(r'C:\Program Files\Analog Devices\ACE\Client')
+
+# noinspection SpellCheckingInspection
+import clr  # noqa
+# noinspection SpellCheckingInspection
+clr.AddReference('AnalogDevices.Csa.Remoting.Clients')
+clr.AddReference('AnalogDevices.Csa.Remoting.Contracts')
+
+# noinspection PyUnresolvedReferences,SpellCheckingInspection
+from AnalogDevices.Csa.Remoting.Clients import ClientManager  #noqa
+
+
+def main():
+    manager = ClientManager.Create()
+    client = manager.CreateRequestClient("localhost:2357")
+    execute_macro(client)
+    # client.CloseSession()
+
+
+# noinspection SpellCheckingInspection
 def execute_macro(client):
+    client.AddByComponentId("ADMV8809Board")
+    client.NavigateToPath("Root::System")
+    client.ContextPath = "\System\Subsystem_1\ADMV8809 Board"
+    client.Run("@DefaultView")
     client.ContextPath = "\System\Subsystem_1\ADMV8809 Board\ADMV8809"
-    client.SetIntParameter("SW_SELECT", "2", "-1")
-    client.SetByteParameter("virtual-parameter-lpf3_state", "0", "-1")
-    #write to LUT table
-    client.SetRegister("38", "7", "-1")
-    client.SetRegister("39", "255", "-1")
+    client.NavigateToPath("Root::System.Subsystem_1.ADMV8809 Board.ADMV8809")
+    client.SetIntParameter("SW_SELECT", "3", "-1")
     client.Run("@ApplySettings")
+    # UI.SelectTab("tool.macrorecorder");
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,24 @@
+-- Analog Devices, Inc. evaluation macro file
+## Copyright © 2026 by Analog Devices, Inc.  All rights reserved.  This software is proprietary to Analog Devices, Inc. and its licensors.
+## This software is provided on an “as is” basis without any representations, warranties, guarantees or liability of any kind.
+## Use of the software is subject to the terms and conditions of the Clear BSD License ( https://spdx.org/licenses/BSD-3-Clause-Clear.html ).
+Hardware.UI.AddAttachedHardware(("ADMV8809Board"));
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-0-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-1-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-2-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-3-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-4-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-5-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-6-direction-sdp-con-a", True, -1); [skip]
+> @::SDP-S: Evaluation.Control.SetBoolParameter("gpio-7-direction-sdp-con-a", True, -1); [skip]
+UI.NavigateToPath("Root::System");
+@Subsystem_1.ADMV8809 Board: @DefaultView();
+> @Subsystem_1.ADMV8809 Board: UI.NavigateToPath(""); [skip]
+@Subsystem_1.ADMV8809 Board.ADMV8809: UI.NavigateToPath("Root::System.Subsystem_1.ADMV8809 Board.ADMV8809");
+@Subsystem_1.ADMV8809 Board.ADMV8809: Evaluation.Control.SetIntParameter("SW_SELECT", 3, -1);
+@Subsystem_1.ADMV8809 Board.ADMV8809: @ApplySettings();
+> @Subsystem_1.ADMV8809 Board.ADMV8809: Evaluation.Control.WriteRegister(0x13, 0x3); [skip]
+>> @Subsystem_1.ADMV8809 Board.ADMV8809.ADMV8809 Memory Map: @SpiWriteRead((0x3,0x13,0x0), 1, 0); [skip]
+> @Subsystem_1.ADMV8809 Board.ADMV8809: Evaluation.Control.ReadRegister(0x15); [skip]
+>> @Subsystem_1.ADMV8809 Board.ADMV8809.ADMV8809 Memory Map: @SpiWriteRead((0x15,0x80), 1, 1); [skip]
+UI.SelectTab("tool.macrorecorder");
