@@ -211,6 +211,23 @@ class KeysightELPanel(QtWidgets.QWidget):
                 self.meas_current_ch2.setText('N/A' if i is None else f'{i:.6f} A')
         self.status_label.setText('Read complete')
 
+    def get_all_readings(self):
+        """Return ([V_ch1, V_ch2], [I_ch1, I_ch2]); used by SupplyRecorder."""
+        voltages = []
+        currents = []
+        for ch in (1, 2):
+            try:
+                v = self.dev.measure_voltage(ch) if self.dev else None
+            except Exception:
+                v = None
+            try:
+                i = self.dev.measure_current(ch) if self.dev else None
+            except Exception:
+                i = None
+            voltages.append(0.0 if v is None else float(v))
+            currents.append(0.0 if i is None else float(i))
+        return voltages, currents
+
     def _set_input_toggle_ui(self, ch: int, on: bool):
         btn = self.input_toggle_ch1 if ch == 1 else self.input_toggle_ch2
         btn.setChecked(on)
