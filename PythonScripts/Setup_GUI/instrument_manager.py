@@ -5,9 +5,44 @@ Provides VISA scanning, adding instrument panels, closing tabs,
 and related helpers.
 """
 import concurrent.futures
+import os
 
 from PyQt5 import QtWidgets, QtCore
 import pyvisa
+
+
+# Keep references to os.add_dll_directory handles for the process lifetime so
+# the added VISA directories are not removed from the DLL search path on GC.
+_VISA_DLL_DIR_HANDLES = []
+
+
+def _ensure_visa_dll_path() -> None:
+    """Add the Keysight/IVI VISA ``bin`` folders to Python's DLL search path.
+
+    On Python 3.8+ the default DLL search path is restricted, so the System32
+    ``visa32.dll`` cannot locate the vendor VISA plug-ins it loads lazily,
+    which makes ``pyvisa.ResourceManager()`` fail with ``VI_ERROR_LIBRARY_NFOUND``.
+    Runs at import time (before any ResourceManager call) and keeps the handles
+    alive so the directories are not removed on garbage collection.
+    """
+    if _VISA_DLL_DIR_HANDLES:
+        return
+    for d in (
+        r'C:\Program Files\Keysight\IO Libraries Suite\bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\Bin',
+        r'C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\ktvisa\ktbin',
+    ):
+        if os.path.isdir(d):
+            try:
+                _VISA_DLL_DIR_HANDLES.append(os.add_dll_directory(d))
+            except (OSError, AttributeError):
+                pass
+            if d not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = d + os.pathsep + os.environ.get('PATH', '')
+
+
+_ensure_visa_dll_path()
 
 from Support_Scrips.Front_Panels.keithley_panel import KeithleyPanel
 from Support_Scrips.Front_Panels.keysightEL_panel import KeysightELPanel
@@ -27,7 +62,24 @@ class InstrumentMixin:
         except Exception:
             pass
         self.detected_combo.clear()
-        rm = pyvisa.ResourceManager()
+        try:
+            rm = pyvisa.ResourceManager()
+        except Exception as e:
+            self.detected_combo.addItem('No devices found', None)
+            try:
+                self.statusBar().showMessage('VISA could not be opened')
+            except Exception:
+                pass
+            QtWidgets.QMessageBox.warning(
+                self,
+                'VISA error',
+                'Could not open the VISA resource manager:\n'
+                f'{e}\n\n'
+                'Make sure the Keysight IO Libraries Suite is installed and that '
+                'the GUI is running from the project .venv (launch via '
+                'launch_setup_gui.pyw).',
+            )
+            return
         try:
             resources = list(rm.list_resources())
         except Exception:
@@ -113,6 +165,16 @@ class InstrumentMixin:
             return 'Unknown'
 
         alias_counters = {}
+        # Seed counters from existing alias names so auto-generated names never
+        # collide with aliases already defined in the profile (e.g. "E36233A 0").
+        try:
+            for alias in (self.alias_map or {}).keys():
+                base = ''.join(ch for ch in alias if not ch.isdigit()).strip()
+                num = ''.join(ch for ch in alias if ch.isdigit())
+                if base and num.isdigit():
+                    alias_counters[base] = max(alias_counters.get(base, 0), int(num) + 1)
+        except Exception:
+            pass
         for cat, items in categories.items():
             for res, inst_type in items:
                 alias_name = rev_alias.get(res)
@@ -207,7 +269,7 @@ class InstrumentMixin:
         panels = []
         for i in range(self.tabs.count()):
             w = self.tabs.widget(i)
-            if isinstance(w, (KeithleyPanel, KeysightE36233APanel)):
+            if isinstance(w, (KeithleyPanel, KeysightE36233APanel, KeysightELPanel)):
                 panels.append(w)
         return panels
 

@@ -1,3 +1,5 @@
+import threading
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 from Instruments.keysight_el import KeysightEL
 
@@ -30,6 +32,8 @@ class KeysightELPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self.resource = resource
         self.dev = None  # KeysightEL instance
+        self._io_lock = threading.Lock()
+        self._live_timer = None
         self.status_label = QtWidgets.QLabel('')
         self._build_ui()
 
@@ -129,6 +133,14 @@ class KeysightELPanel(QtWidgets.QWidget):
         self.read_btn = QtWidgets.QPushButton('Read Now (Both)')
         self.read_btn.clicked.connect(self.read_once)
         bottom.addWidget(self.read_btn)
+        self.live_read_chk = QtWidgets.QCheckBox('Live Read')
+        self.live_read_chk.toggled.connect(self.on_live_read_toggled)
+        bottom.addWidget(self.live_read_chk)
+        bottom.addWidget(QtWidgets.QLabel('Interval (ms):'))
+        self.live_interval_edit = QtWidgets.QLineEdit('500')
+        self.live_interval_edit.setMaximumWidth(70)
+        bottom.addWidget(self.live_interval_edit)
+        bottom.addStretch(1)
         layout.addLayout(bottom)
 
         layout.addWidget(self.status_label)
@@ -192,24 +204,76 @@ class KeysightELPanel(QtWidgets.QWidget):
         except Exception as e:
             self.status_label.setText(f'Apply failed: {e}')
 
+    def _read_channels(self):
+        """Thread-safe read of both channels. Returns ([V1, V2], [I1, I2]).
+
+        Missing/failed reads are returned as None. Serialized via a lock so the
+        background SupplyRecorder thread and the GUI live-read timer never
+        interleave channel-select/measure SCPI on the same device.
+        """
+        voltages = [None, None]
+        currents = [None, None]
+        dev = self.dev
+        if dev is None:
+            return voltages, currents
+        with self._io_lock:
+            for idx, ch in enumerate((1, 2)):
+                try:
+                    voltages[idx] = dev.measure_voltage(ch)
+                except Exception:
+                    voltages[idx] = None
+                try:
+                    currents[idx] = dev.measure_current(ch)
+                except Exception:
+                    currents[idx] = None
+        return voltages, currents
+
+    def _update_reading_labels(self, voltages, currents):
+        self.meas_voltage_ch1.setText('N/A' if voltages[0] is None else f'{voltages[0]:.6f} V')
+        self.meas_current_ch1.setText('N/A' if currents[0] is None else f'{currents[0]:.6f} A')
+        self.meas_voltage_ch2.setText('N/A' if voltages[1] is None else f'{voltages[1]:.6f} V')
+        self.meas_current_ch2.setText('N/A' if currents[1] is None else f'{currents[1]:.6f} A')
+
     def read_once(self):
         # Read both channels
-        for ch in (1, 2):
-            try:
-                v = self.dev.measure_voltage(ch)
-            except Exception:
-                v = None
-            try:
-                i = self.dev.measure_current(ch)
-            except Exception:
-                i = None
-            if ch == 1:
-                self.meas_voltage_ch1.setText('N/A' if v is None else f'{v:.6f} V')
-                self.meas_current_ch1.setText('N/A' if i is None else f'{i:.6f} A')
-            else:
-                self.meas_voltage_ch2.setText('N/A' if v is None else f'{v:.6f} V')
-                self.meas_current_ch2.setText('N/A' if i is None else f'{i:.6f} A')
+        voltages, currents = self._read_channels()
+        self._update_reading_labels(voltages, currents)
         self.status_label.setText('Read complete')
+
+    def on_live_read_toggled(self, checked: bool):
+        if checked:
+            if self.dev is None:
+                self.status_label.setText('Not connected')
+                self.live_read_chk.setChecked(False)
+                return
+            try:
+                interval = max(50, int(float(self.live_interval_edit.text())))
+            except Exception:
+                interval = 500
+            if self._live_timer is None:
+                self._live_timer = QtCore.QTimer(self)
+                self._live_timer.timeout.connect(self._on_live_tick)
+            self._live_timer.start(interval)
+            self.status_label.setText('Live read started')
+        else:
+            if self._live_timer is not None:
+                self._live_timer.stop()
+            self.status_label.setText('Live read stopped')
+
+    def _on_live_tick(self):
+        voltages, currents = self._read_channels()
+        self._update_reading_labels(voltages, currents)
+
+    def get_all_readings(self):
+        """Return ([V1, V2], [I1, I2]) for both channels for supply recording.
+
+        Always returns two-element lists so the SupplyRecorder column layout
+        stays stable even when a channel read fails or the device is offline.
+        """
+        voltages, currents = self._read_channels()
+        v = [0.0 if x is None else float(x) for x in voltages]
+        i = [0.0 if x is None else float(x) for x in currents]
+        return v, i
 
     def _set_input_toggle_ui(self, ch: int, on: bool):
         btn = self.input_toggle_ch1 if ch == 1 else self.input_toggle_ch2

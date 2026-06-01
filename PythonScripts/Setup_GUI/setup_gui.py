@@ -15,6 +15,71 @@ import sys
 import os
 import datetime
 
+
+# Keep references to os.add_dll_directory handles for the process lifetime so
+# the added VISA directories are not removed from the DLL search path on GC.
+_VISA_DLL_DIR_HANDLES = []
+
+
+def _ensure_visa_dll_path() -> None:
+    """Make the Keysight/IVI VISA implementation loadable from Python.
+
+    On Python 3.8+ the default DLL search path is restricted, so the
+    System32 ``visa32.dll`` cannot find the vendor VISA plug-ins that it
+    loads lazily inside ``viOpenDefaultRM``. Without this, pyvisa fails with
+    ``VI_ERROR_LIBRARY_NFOUND`` even though the IO Libraries are installed.
+    Adding the vendor ``bin`` folders to the DLL search path fixes it.
+
+    This must run BEFORE pyvisa first loads the VISA DLL, so it is called at
+    module import time (before the pyvisa-importing modules below). The
+    ``os.add_dll_directory`` handles are kept alive in a module-level list,
+    otherwise the directories are removed from the search path on GC.
+    """
+    if _VISA_DLL_DIR_HANDLES:
+        return
+    candidate_dirs = [
+        r'C:\Program Files\Keysight\IO Libraries Suite\bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\Bin',
+        r'C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\ktvisa\ktbin',
+    ]
+    for d in candidate_dirs:
+        if os.path.isdir(d):
+            try:
+                _VISA_DLL_DIR_HANDLES.append(os.add_dll_directory(d))
+            except (OSError, AttributeError):
+                pass
+            if d not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = d + os.pathsep + os.environ.get('PATH', '')
+
+
+# Run immediately, before any module that imports/loads pyvisa is imported.
+_ensure_visa_dll_path()
+
+
+def _warm_up_visa() -> None:
+    """Load the VISA library once, before PyQt5 is imported.
+
+    Importing PyQt5 alters the process DLL search behaviour so that, on the
+    first ``viOpenDefaultRM`` call, ``visa32.dll`` can no longer locate the
+    vendor plug-ins we added via ``os.add_dll_directory`` -- and that failure
+    is cached for the lifetime of the process, so adding the directories again
+    cannot recover it. Creating a throwaway ``ResourceManager`` here, while the
+    DLL search path is still clean, loads and caches the VISA library so all
+    later ``ResourceManager()`` calls (including after Qt is imported) succeed.
+    """
+    try:
+        import pyvisa
+        pyvisa.ResourceManager()
+    except Exception:
+        # No VISA backend / no IO Libraries installed: scanning will report
+        # this later with a user-facing message. Don't block GUI startup.
+        pass
+
+
+# Must run BEFORE the PyQt5 import below.
+_warm_up_visa()
+
 from PyQt5 import QtWidgets, QtCore
 
 from Support_Scrips.power_sequence_builder import PowerSequenceBuilder
@@ -245,7 +310,8 @@ class MainWindow(
         # Power sequence builder (wrapper)
         self.power_seq_builder = PowerSequenceBuilder(
             parent=self,
-            get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())]
+            get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())],
+            get_channels_callback=self._seq_get_instrument_channels
         )
         test_layout.addWidget(self.power_seq_builder)
 
@@ -359,6 +425,18 @@ class MainWindow(
         # Start disabled until primed
         self.record_btn.setEnabled(False)
         record_row.addWidget(self.record_btn)
+        # Beam state toggle. Logged as the 'beamON' column in the supply
+        # recorder (0 = off, 1 = on). Stays visible/usable during recording.
+        self.beam_on = 0
+        self.beam_toggle_btn = QtWidgets.QPushButton('Beam OFF')
+        self.beam_toggle_btn.setCheckable(True)
+        self.beam_toggle_btn.setChecked(False)
+        self.beam_toggle_btn.setToolTip(
+            'Toggle beam state recorded in the supply CSV (beamON column). '
+            'Press to flip between 0 and 1 while recording.')
+        self.beam_toggle_btn.clicked.connect(self.toggle_beam_on)
+        self._update_beam_toggle_btn(False)
+        record_row.addWidget(self.beam_toggle_btn)
         self.supply_record_toggle = QtWidgets.QCheckBox('Supply')
         self.supply_record_toggle.setChecked(True)
         record_row.addWidget(self.supply_record_toggle)
@@ -446,6 +524,28 @@ class MainWindow(
     def _ts(self):
         return datetime.datetime.now().strftime('%H:%M:%S')
 
+    def _update_beam_toggle_btn(self, on: bool):
+        """Reflect the beam state on the toggle button."""
+        if on:
+            self.beam_toggle_btn.setText('Beam ON')
+            self.beam_toggle_btn.setStyleSheet(
+                'background-color: #4CAF50; color: white; font-weight: bold;')
+        else:
+            self.beam_toggle_btn.setText('Beam OFF')
+            self.beam_toggle_btn.setStyleSheet(
+                'background-color: #9E9E9E; color: white; font-weight: bold;')
+
+    def toggle_beam_on(self):
+        """Flip the logged beam state between 0 and 1 (recorded as beamON)."""
+        self.beam_on = 0 if getattr(self, 'beam_on', 0) else 1
+        on = bool(self.beam_on)
+        try:
+            self.beam_toggle_btn.setChecked(on)
+        except Exception:
+            pass
+        self._update_beam_toggle_btn(on)
+        self._log(f'Beam {"ON" if on else "OFF"} (beamON={self.beam_on})')
+
     def _log(self, msg: str):
         # Emit through Qt signal to ensure GUI-thread-safe appending
         try:
@@ -513,6 +613,7 @@ if __name__ == '__main__':
     from PyQt5 import QtWidgets
     try:
         _ensure_qt_plugin_path()
+        _ensure_visa_dll_path()
         app = QtWidgets.QApplication(sys.argv)
         win = MainWindow()
         win.show()

@@ -6,6 +6,8 @@
     "Hittite 1": "GPIB0::4::INSTR",
     "Keithley 0": "GPIB0::1::INSTR",
     "Keithley 1": "GPIB0::2::INSTR",
-    "Keysight EL 0": "USB0::0x2A8D::0x3902::MY61002154::INSTR"
+    "Keysight EL 0": "USB0::0x2A8D::0x3902::MY61002154::INSTR",
+    "KEY0": "USB0::0x2A8D::0x3302::MY59001469::0::INSTR",
+    "KEY1": "USB0::0x2A8D::0x3302::MY59001237::0::INSTR"
   }
 }

@@ -348,6 +348,9 @@ class PowerMixin:
                 self._hittite_apply_on_power(widget, False)
             elif isinstance(widget, KeysightELPanel):
                 self._keysight_el_apply_settings(widget, False)
+            elif isinstance(widget, KeysightE36233APanel):
+                for ch in (1, 2):
+                    self._e36233a_apply_channel(widget, ch, on=False)
             elif isinstance(widget, RhodeSchwarzSMAPanel):
                 self._generic_output_toggle(widget, False)
             elif isinstance(widget, FieldFoxSAPanel):
@@ -492,6 +495,9 @@ class PowerMixin:
                                         widget._set_input_toggle_ui(ch, False)
                                 except Exception:
                                     pass
+                    elif isinstance(widget, KeysightE36233APanel):
+                        for ch in (1, 2):
+                            self._e36233a_apply_channel(widget, ch, on=False)
                     elif isinstance(widget, RhodeSchwarzSMAPanel):
                         if widget.dev:
                             try:
@@ -635,6 +641,51 @@ class PowerMixin:
                 pass
 
     # --- Power-sequence execution ---
+    def _seq_get_instrument_channels(self, name):
+        """Return [(channel_number, channel_label), ...] for a sequenceable
+        multi-channel supply identified by its tab name. Used by the power
+        sequence builder to offer per-channel options."""
+        try:
+            for i in range(self.tabs.count()):
+                if self.tabs.tabText(i) == name:
+                    w = self.tabs.widget(i)
+                    if isinstance(w, KeysightE36233APanel):
+                        labels = getattr(w, 'channel_labels', ['1', '2'])
+                        out = []
+                        for idx in range(2):
+                            lbl = labels[idx] if idx < len(labels) else str(idx + 1)
+                            out.append((idx + 1, lbl))
+                        return out
+        except Exception:
+            pass
+        return []
+
+    def _e36233a_apply_channel(self, panel, ch, on=True):
+        """Apply set-points and output state to a single E36233A channel."""
+        supply = getattr(panel, 'supply', None)
+        if supply is None:
+            return
+        try:
+            if on:
+                if hasattr(panel, 'sync_active_channel'):
+                    panel.sync_active_channel()
+                volts = getattr(panel, 'channel_voltages', ['0.0', '0.0'])
+                currs = getattr(panel, 'channel_currents', ['0.0', '0.0'])
+                v = volts[ch - 1] if (ch - 1) < len(volts) else '0.0'
+                c = currs[ch - 1] if (ch - 1) < len(currs) else '0.0'
+                supply.set_voltage(ch, v)
+                supply.set_current(ch, c)
+                supply.output_on(ch)
+            else:
+                supply.output_off(ch)
+            if getattr(panel, '_active_channel_index', 0) == (ch - 1) and hasattr(panel, 'onoff_btn'):
+                panel.onoff_btn.setChecked(on)
+                panel.is_on = on
+                if hasattr(panel, '_update_onoff_btn_color'):
+                    panel._update_onoff_btn_color(on)
+        except Exception:
+            pass
+
     def _run_power_sequence(self, on_complete=None):
         """Run the configured power-up sequence."""
         sequence = self.power_seq_builder.get_sequence()
@@ -697,6 +748,24 @@ class PowerMixin:
                                         widget.inst.set_output(ch, True)
                                     widget.output_btns[ch].setChecked(True)
                                     widget.output_btns[ch].setText('Output On')
+                                break
+                    QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
+                elif item.startswith('SupplyChannel: '):
+                    name = item[len('SupplyChannel: '):]
+                    tab_name, ch = name, None
+                    if 'Channel' in name:
+                        parts = name.split('Channel')
+                        tab_name = parts[0].strip()
+                        try:
+                            ch = int(parts[1].strip())
+                        except Exception:
+                            ch = None
+                    if ch is not None:
+                        for i in range(self.tabs.count()):
+                            if self.tabs.tabText(i) == tab_name:
+                                widget = self.tabs.widget(i)
+                                if isinstance(widget, KeysightE36233APanel):
+                                    self._e36233a_apply_channel(widget, ch, on=True)
                                 break
                     QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
                 elif item.startswith('Instrument: '):
@@ -795,6 +864,9 @@ class PowerMixin:
                                         widget.status_label.setText('Output ON')
                                     except Exception as e:
                                         widget.status_label.setText(f'Failed to set output: {e}')
+                            elif isinstance(widget, KeysightE36233APanel):
+                                for ch in (1, 2):
+                                    self._e36233a_apply_channel(widget, ch, on=True)
                     QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
                 elif item.startswith('Delay: '):
                     delay_val = float(item[len('Delay: '):-3])

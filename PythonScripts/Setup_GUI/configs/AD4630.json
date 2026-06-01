@@ -1,0 +1,72 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "5.4",
+          "current": "0.2",
+          "output": false,
+          "name": "+5.4V AVDD"
+        },
+        "2": {
+          "voltage": "1.8",
+          "current": "0.2",
+          "output": false,
+          "name": "+1.8V DVDD"
+        },
+        "3": {
+          "voltage": "1.8",
+          "current": "0.2",
+          "output": false,
+          "name": "VIO 1.8V"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "12.0",
+          "current": "1.0",
+          "output": false,
+          "name": "+12V FMC"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "Beam"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "1.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 1 Channel 1",
+    "Delay: 1.0 s",
+    "KeithleyChannel: Keithley 0 Channel 1",
+    "Delay: 0.2 s",
+    "KeithleyChannel: Keithley 0 Channel 2",
+    "Delay: 0.2 s",
+    "KeithleyChannel: Keithley 0 Channel 3"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 1 CH1 \"+12V FMC\"  \u2192 ZedBoard J20 (or eval +12V turret) \u2014 powers the on-board LDOs that derive +3.3V, REFIN 5V, VAMP+, VAMP-, EN.\nKeithley 0 CH1 \"+5.4V AVDD\" \u2192 +5.4V turret on EVAL-AD4630-24FMCZ (lift on-board LDO feed jumper for this rail).\nKeithley 0 CH2 \"+1.8V DVDD\" \u2192 +1.8V turret (lift on-board LDO feed).\nKeithley 0 CH3 \"VIO 1.8V\"   \u2192 VIO turret (lift on-board LDO feed; otherwise VIO is tied to +1.8V on the eval board).\nZedBoard      \u2192 EVAL-AD4630-24FMCZ via FMC-LPC; ZedBoard VADJ jumper = 2.5 V.\nSignal source \u2192 IN_A+ / IN_A- SMA (default ADA4945-1 differential AFE).\nClock         \u2192 on-board 100 MHz XO (default; J6 CLK IN unused).",
+    "sources": "Keithley 1 CH1 \u2013 +12 V @ 1.0 A limit (board primary; on-board LDOs make +3.3V, REFIN 5V, VAMP+, VAMP-, EN).\nKeithley 0 CH1 \u2013 +5.4 V @ 0.2 A limit (AD4630 AVDD, datasheet 5.34\u20135.46 V).\nKeithley 0 CH2 \u2013 +1.8 V @ 0.2 A limit (AD4630 DVDD, 1.77\u20131.81 V).\nKeithley 0 CH3 \u2013 +1.8 V @ 0.2 A limit (AD4630 VIO digital I/O, 1.77\u20131.81 V).",
+    "monitoring": "DEWESOFT current (DSI-5A, 5 A range, slew limited):\n    CH1 I \u2192 in-line with +5.4V AVDD feed\n    CH2 I \u2192 in-line with +1.8V DVDD feed\n    CH3 I \u2192 in-line with VIO 1.8V feed\nDEWESOFT voltage (SIRIUS-HS-LVv2, 10 V range):\n    CH1 V  \u2192 +5.4V turret to GND\n    CH2 V  \u2192 +1.8V turret to GND\n    CH3 V  \u2192 VIO  turret to GND\n    Beam V \u2192 facility beam-on TTL / run gate\nKeithley supplies also report I/V over GPIB for slow logging.",
+    "general": "EVAL-AD4630-24FMCZ rad-effects setup (TID monitoring; SEL/SEU not configured).\n    Configuration / data capture done in ACE on a separate PC via ZedBoard USB OTG \u2014 not through this GUI.\n    GUI handles power sequencing and slow rail logging only.\n    Power-up order: +12V FMC \u2192 wait for EN to assert \u2192 +5.4V \u2192 +1.8V \u2192 VIO.\n    Tight 200 mA current limits on the three AD4630 rails so any latch-up trips the supply.\n    Beam V channel is a witness for accelerator run gate alignment."
+  }
+}

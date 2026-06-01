@@ -11,6 +11,7 @@ import time
 import threading
 import queue
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from PyQt5 import QtWidgets, QtCore
 
@@ -211,51 +212,100 @@ class RecordingMixin:
                 self._writer_stop = None
                 self._writer_thread = None
                 self._header = self._build_header(panels)
+                # First column holding a supply reading (after timestamp,
+                # elapsed_s, beamON). Everything from here on is a numeric V/I
+                # read that gets a per-column expected value and deviation check.
+                self._first_data_col = 4
+                # Establish an expected (baseline) value for each supply column
+                # from the first few reads, then flag cells that drift away.
+                self._baseline_n = 5
+                self._col_samples = {}    # col -> list of early sample values
+                self._col_baseline = {}   # col -> (expected, tolerance)
+                # Read every supply concurrently. Each panel talks to an
+                # independent VISA resource (its own lock), so the slow MEAS
+                # queries overlap instead of running back-to-back. With N
+                # supplies this cuts per-row read time roughly N-fold.
+                self._read_pool = None
+
+            def _channel_names_for(self, p):
+                """Return the user-given channel names for a supply panel."""
+                if p.__class__.__name__.startswith('Keithley'):
+                    try:
+                        names = []
+                        for i in (1, 2, 3):
+                            edit = p.ch_name_edits.get(i) if hasattr(p, 'ch_name_edits') else None
+                            txt = edit.text().strip() if edit else ''
+                            names.append(txt or f'CH{i}')
+                        return names
+                    except Exception:
+                        return [f'CH{i}' for i in (1, 2, 3)]
+                # E36233A and other 2-channel supplies expose channel names
+                try:
+                    raw = getattr(p, 'channel_labels', None)
+                    if raw is None:
+                        raw = getattr(p, 'channel_names', None)
+                    if raw:
+                        return [(n or '').strip() or f'CH{i + 1}' for i, n in enumerate(raw)]
+                except Exception:
+                    pass
+                return [f'CH{i}' for i in (1, 2)]
 
             def _build_header(self, panels):
-                ts = ['timestamp', 'elapsed_s']
+                ts = ['timestamp', 'elapsed_s', 'beamON']
                 v_headers = []
                 i_headers = []
                 for p in panels:
-                    try:
-                        tab_idx = self_parent.tabs.indexOf(p)
-                        alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
-                    except Exception:
-                        alias_name = getattr(p, 'resource', 'Supply')
-                    if p.__class__.__name__.startswith('Keithley'):
-                        ch_count = 3
-                        try:
-                            ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1, 2, 3)]
-                        except Exception:
-                            ch_names = [f'CH{i}' for i in (1, 2, 3)]
-                    else:
-                        ch_count = 2
-                        ch_names = [f'CH{i}' for i in (1, 2)]
-                    for i in range(1, ch_count + 1):
-                        nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
-                        v_headers.append(f'{alias_name}_{nm}_V')
+                    for nm in self._channel_names_for(p):
+                        v_headers.append(f'{nm}_V')
                 for p in panels:
-                    try:
-                        tab_idx = self_parent.tabs.indexOf(p)
-                        alias_name = self_parent.tabs.tabText(tab_idx) if tab_idx >= 0 else getattr(p, 'resource', 'Supply')
-                    except Exception:
-                        alias_name = getattr(p, 'resource', 'Supply')
-                    if p.__class__.__name__.startswith('Keithley'):
-                        ch_count = 3
-                        try:
-                            ch_names = [p.ch_name_edits[i].text() if hasattr(p, 'ch_name_edits') and p.ch_name_edits.get(i) else f'CH{i}' for i in (1, 2, 3)]
-                        except Exception:
-                            ch_names = [f'CH{i}' for i in (1, 2, 3)]
-                    else:
-                        ch_count = 2
-                        ch_names = [f'CH{i}' for i in (1, 2)]
-                    for i in range(1, ch_count + 1):
-                        nm = ch_names[i - 1] if i - 1 < len(ch_names) else f'CH{i}'
-                        i_headers.append(f'{alias_name}_{nm}_I')
+                    for nm in self._channel_names_for(p):
+                        i_headers.append(f'{nm}_I')
                 return ts + v_headers + i_headers
 
             def start(self):
                 self._writer_stop = threading.Event()
+                n = max(1, len(self.get_readings_funcs))
+                self._read_pool = ThreadPoolExecutor(max_workers=n)
+
+                from openpyxl.styles import PatternFill
+                red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+
+                def highlight_row(ws, excel_row, values):
+                    """Update per-column expected values and red-flag deviations.
+
+                    The first self._baseline_n reads of each supply column set an
+                    expected value (mean) and a tolerance derived from the early
+                    spread. Later cells are filled red when they deviate past it.
+                    """
+                    last_col = len(self._header)
+                    for col in range(self._first_data_col, last_col + 1):
+                        idx = col - 1
+                        if idx >= len(values):
+                            continue
+                        try:
+                            val = float(values[idx])
+                        except (TypeError, ValueError):
+                            continue
+                        base = self._col_baseline.get(col)
+                        if base is None:
+                            samples = self._col_samples.setdefault(col, [])
+                            samples.append(val)
+                            if len(samples) >= self._baseline_n:
+                                mean = sum(samples) / len(samples)
+                                var = sum((s - mean) ** 2 for s in samples) / len(samples)
+                                spread = var ** 0.5
+                                # Tolerance: whichever is largest of 5% of the
+                                # expected value, 4x the early read spread, or a
+                                # tiny floor so near-zero columns still settle.
+                                tol = max(abs(mean) * 0.05, spread * 4.0, 1e-3)
+                                self._col_baseline[col] = (mean, tol)
+                            continue
+                        mean, tol = base
+                        if abs(val - mean) > tol:
+                            try:
+                                ws.cell(row=excel_row, column=col).fill = red_fill
+                            except Exception:
+                                pass
 
                 def writer_loop():
                     lock = getattr(self_parent, '_excel_lock', None)
@@ -294,6 +344,7 @@ class RecordingMixin:
                                     ws = self_parent._excel_get_sheet_locked(self.sheet_name)
                                     for row in pending:
                                         ws.append(row)
+                                        highlight_row(ws, ws.max_row, row)
                                     pending.clear()
                                     last_save = now
                                     self_parent._excel_save_locked()
@@ -324,6 +375,11 @@ class RecordingMixin:
                         self._writer_thread.join(timeout=10)
                 except Exception:
                     pass
+                try:
+                    if self._read_pool:
+                        self._read_pool.shutdown(wait=False)
+                except Exception:
+                    pass
 
             def _run(self):
                 sample_count = 0
@@ -339,7 +395,10 @@ class RecordingMixin:
                         time.sleep(0.005)
                 start_time = time.time()
                 last_report_time = start_time
-                target_interval = getattr(self_parent, '_supply_target_interval', 0.04)
+                # Default 0.0 = read as fast as the instruments allow (paced only
+                # by USB/measurement latency). Set self._supply_target_interval to
+                # a positive value to re-throttle (e.g. 0.04 for ~25 Hz).
+                target_interval = getattr(self_parent, '_supply_target_interval', 0.0)
                 next_tick = time.perf_counter()
                 while not self._stop_event.is_set():
                     nowp = time.perf_counter()
@@ -348,13 +407,19 @@ class RecordingMixin:
                         continue
                     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                     elapsed_s = round(time.time() - start_time, 3)
+                    beam_on = int(bool(getattr(self_parent, 'beam_on', 0)))
                     all_voltages = []
                     all_currents = []
-                    for func in self.get_readings_funcs:
-                        voltages, currents = func()
+                    # Read all supplies concurrently; map preserves input order
+                    # so columns stay aligned with the header.
+                    if self._read_pool and len(self.get_readings_funcs) > 1:
+                        results = list(self._read_pool.map(lambda f: f(), self.get_readings_funcs))
+                    else:
+                        results = [f() for f in self.get_readings_funcs]
+                    for voltages, currents in results:
                         all_voltages.extend(voltages)
                         all_currents.extend(currents)
-                    row = [now, elapsed_s] + all_voltages + all_currents
+                    row = [now, elapsed_s, beam_on] + all_voltages + all_currents
                     try:
                         self._write_q.put_nowait(row)
                     except Exception:
