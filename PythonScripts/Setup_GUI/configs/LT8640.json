@@ -1,0 +1,66 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "15",
+          "current": "4",
+          "output": false,
+          "name": "Vin"
+        },
+        "2": {
+          "voltage": "3.3",
+          "current": "1.5",
+          "output": false,
+          "name": "EN"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CR",
+          "value": "5",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CC",
+          "value": "0.0",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 0 Channel 2",
+    "Delay: 1.0 s",
+    "KeithleyChannel: Keithley 0 Channel 1",
+    "Delay: 1.0 s",
+    "Instrument: Keysight EL 0"
+  ],
+  "use_sequence": false,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \"Vin\" \u2192 DUT VIN\n    CH2 \"EN\"  \u2192 DUT EN\nKeysight EL 0 (Electronic Load)\n    CH1 \"Iout\" \u2190 DUT VOUT (load)\nDewesoft\n    CH6 \u2192 PG (Power Good)\n    CH8 \u2192 Vout",
+    "sources": "Keithley 0 \u2013 Vin and EN (values TBD)\nKeysight EL 0 \u2013 CH1 Iout load (value TBD)",
+    "monitoring": "Keithley 0 \u2013 Monitor Vin / EN supply currents\nKeysight EL 0 \u2013 Monitor Iout\nDewesoft \u2013 CH6 PG, CH8 Vout",
+    "general": "Config: LT8640\nInputs/values to be filled in."
+  }
+}

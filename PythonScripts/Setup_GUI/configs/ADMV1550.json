@@ -4,7 +4,6 @@
       "type": "Hittite Sig Gen",
       "resource": "alias:Hittite 0",
       "name": "Hittite 0 LO",
-      "dut_port": "LO",
       "settings": {
         "frequency": "20",
         "freq_unit": "GHz",
@@ -14,9 +13,8 @@
     },
     {
       "type": "Hittite Sig Gen",
-      "resource": "alias:Hittite 1",
-      "name": "Hittite 1 RF",
-      "dut_port": "RF",
+      "resource": "alias:Hittite 2",
+      "name": "Hittite 1",
       "settings": {
         "frequency": "21",
         "freq_unit": "GHz",
@@ -28,19 +26,18 @@
       "type": "Keysight FieldFox",
       "resource": "alias:FieldFox 0",
       "name": "FieldFox 0",
-      "dut_port": "IF",
       "settings": {
-        "center": "2",
-        "span": "3.5",
-        "start": "",
-        "stop": "",
+        "center": "4.0",
+        "span": "8.0",
+        "start": "0.5",
+        "stop": "1.5",
         "unit": "GHz"
       }
     }
   ],
   "sequence": [],
   "use_sequence": false,
-  "program_logic_path": "",
+  "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADMV8809.py",
   "register_read_array": [],
   "notes": {
     "connections": "Hittite 0 LO  (Signal Generator) \u2192 LO\nHittite 1 RF  (Signal Generator) \u2192 RF\nFieldFox 0  (Spectrum Analyzer) \u2190 IF",

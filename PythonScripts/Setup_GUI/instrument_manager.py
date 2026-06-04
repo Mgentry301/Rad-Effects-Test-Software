@@ -207,7 +207,7 @@ class InstrumentMixin:
         panels = []
         for i in range(self.tabs.count()):
             w = self.tabs.widget(i)
-            if isinstance(w, (KeithleyPanel, KeysightE36233APanel)):
+            if isinstance(w, (KeithleyPanel, KeysightE36233APanel, KeysightELPanel)):
                 panels.append(w)
         return panels
 

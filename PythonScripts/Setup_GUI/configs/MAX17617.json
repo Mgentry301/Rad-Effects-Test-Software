@@ -1,0 +1,92 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "24",
+          "current": "2",
+          "output": false,
+          "name": "Vin"
+        },
+        "2": {
+          "voltage": "1.5",
+          "current": "0.1",
+          "output": false,
+          "name": "En"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "unused"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 2",
+      "name": "Keithley 1",
+      "channels": {
+        "1": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "unused"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "unused"
+        },
+        "3": {
+          "voltage": "3.3",
+          "current": "0.1",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "1.5",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        },
+        "2": {
+          "mode": "CC",
+          "value": "0.0",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 1 Channel 3",
+    "KeithleyChannel: Keithley 0 Channel 2",
+    "Delay: 1.0 s",
+    "KeithleyChannel: Keithley 0 Channel 1",
+    "Delay: 1.0 s",
+    "Instrument: Keysight EL 0"
+  ],
+  "use_sequence": false,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \u2192 DUT\n    CH2 \u2192 DUT\nKeithley 1 (Power Supply)\n    CH3 \u2192 DUT\nKeysight EL 0 (Electronic Load)\n    CH1 \u2190 DUT VOUT (load)",
+    "sources": "Keithley 0 \u2013 CH1 / CH2 (values TBD)\nKeithley 1 \u2013 CH3 (value TBD)\nKeysight EL 0 \u2013 CH1 load (value TBD)",
+    "monitoring": "Keithley 0 \u2013 Monitor CH1 / CH2 supply currents\nKeithley 1 \u2013 Monitor CH3 supply current\nKeysight EL 0 \u2013 Monitor Iout",
+    "general": "Config: MAX17617\nVoltages / load settings to be filled in."
+  }
+}

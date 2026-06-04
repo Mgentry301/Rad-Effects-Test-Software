@@ -8,19 +8,19 @@
         "1": {
           "voltage": "5.0",
           "current": "1.0",
-          "output": false,
+          "output": true,
           "name": "PVIN1"
         },
         "2": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": false,
+          "output": true,
           "name": "CH2"
         },
         "3": {
           "voltage": "0.0",
           "current": "0.0",
-          "output": false,
+          "output": true,
           "name": "CH3"
         }
       }
@@ -33,14 +33,14 @@
         "1": {
           "mode": "CC",
           "value": "0.1",
-          "input": false,
+          "input": true,
           "ramp_enabled": false,
           "rise_time": "0"
         },
         "2": {
-          "mode": "Disable",
+          "mode": "CC",
           "value": "0.1",
-          "input": false,
+          "input": true,
           "ramp_enabled": false,
           "rise_time": "0"
         }
@@ -48,27 +48,29 @@
     },
     {
       "type": "Keysight EL34243A",
-      "resource": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
+      "resource": "alias:Keysight EL 1",
       "name": "Keysight EL 1",
       "channels": {
         "1": {
           "mode": "CC",
           "value": "0.1",
-          "input": false,
+          "input": true,
           "ramp_enabled": false,
           "rise_time": "0"
         },
         "2": {
           "mode": "CC",
           "value": "0.1",
-          "input": false,
+          "input": true,
           "ramp_enabled": false,
           "rise_time": "0"
         }
       }
     }
   ],
-  "sequence": [],
+  "sequence": [
+    "KeithleyChannel: Keithley 0 Channel 1"
+  ],
   "use_sequence": false,
   "program_logic_path": "C:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADP5055.py",
   "register_read_array": [
@@ -95,7 +97,7 @@
     226
   ],
   "notes": {
-    "connections": "Keithley 0  (Power Supply)\n    CH1 \"VIN_4p5_to_18V\" \u2192 5.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 0.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 0.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 Disable mode, 0.1, input OFF\nKeysight EL 1  (Electronic Load)\n    CH1 \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 CC mode, 0.1, input OFF\nLinduino\n   SCL-J4 SCL\n   GND-J4 GND\n   SDA-J4 SDA",
+    "connections": "Keithley 0  (Power Supply)\n    CH1 \"VIN_4p5_to_18V\" \u2192 5.0 V, 1.0 A limit\n    CH2 \"CH2\" \u2192 0.0 V, 0.0 A limit\n    CH3 \"CH3\" \u2192 0.0 V, 0.0 A limit\nKeysight EL 0  (Electronic Load)\n    CH1 \"VOUT1\" \u2013 CC mode, 0.1, input OFF\n    CH2 \"VOUT2\" \u2013 CC mode, 0.1, input OFF\nKeysight EL 1  (Electronic Load)\n    CH1 \"VOUT3\" \u2013 CC mode, 0.1, input OFF\n    CH2 \u2013 unused\nLinduino\n   SCL-J4 SCL\n   GND-J4 GND\n   SDA-J4 SDA",
     "sources": "Keithley 0 \u2013 DUT power: VIN_4p5_to_18V @ 5.0 V\nKeysight EL 0 \u2013 Electronic load\nKeysight EL 1 \u2013 Electronic load",
     "monitoring": "Keithley 0 \u2013 Monitor supply currents on all active channels\nKeysight EL 0 \u2013 Monitor load currents / voltages\nKeysight EL 1 \u2013 Monitor load currents / voltages\nRegister reads: CAPABILITY(0x19), STATUS_CML(0x7E), MODEL_ID(0xD0), CTRL123(0xD1),\n  VID_GO(0xD2), CTRL_MODE1(0xD3), CTRL_MODE2(0xD4), DLY1(0xD5), DLY2(0xD6), DLY3(0xD7),\n  VID1(0xD8), VID2(0xD9), VID3(0xDA), DVS_CFG(0xDB), DVS_LIM1(0xDC), DVS_LIM2(0xDD),\n  DVS_LIM3(0xDE), FT_CFG(0xDF), PG_CFG(0xE0), PG_READ(0xE1), STATUS_LCH(0xE2)",
     "general": "Config: ADP5055\nPMBus I2C address: 0x70 (ADDR=GND) | 0x72 (ADDR=VDDIO) | 0x74 (ADDR=Float)\nRegister recording via ACE \u2013 press Record in Setup_GUI to log all registers to Excel\nBRD 3 Struggles with 3 outputs"
