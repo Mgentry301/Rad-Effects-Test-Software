@@ -245,7 +245,7 @@ class MainWindow(
         # Power sequence builder (wrapper)
         self.power_seq_builder = PowerSequenceBuilder(
             parent=self,
-            get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())]
+            get_instruments_callback=self._seq_builder_instruments
         )
         test_layout.addWidget(self.power_seq_builder)
 
@@ -440,6 +440,36 @@ class MainWindow(
             QtCore.QTimer.singleShot(0, self._prompt_alias_startup)
         except Exception:
             pass
+
+    # ---- Sequence builder ----
+
+    def _seq_builder_instruments(self):
+        """Return [(tab_name, [channel_label, ...]), ...] for the sequence builder.
+
+        The channel label list holds the user-given name of each independently
+        sequenceable supply channel, so the builder can display those names
+        instead of bare "Channel N" entries.  Detection is by panel type (not
+        tab name), so renamed supply tabs (e.g. "VDD1A") still expand.
+        """
+        result = []
+        for i in range(self.tabs.count()):
+            name = self.tabs.tabText(i)
+            widget = self.tabs.widget(i)
+            channel_labels = []
+            # Keithley 2230 is the multi-channel supply with per-channel names.
+            if type(widget).__name__ == 'KeithleyPanel':
+                ch_name_edits = getattr(widget, 'ch_name_edits', {})
+                for ch in (1, 2, 3):
+                    edit = ch_name_edits.get(ch)
+                    try:
+                        ch_name = edit.text().strip() if edit is not None else ''
+                    except Exception:
+                        ch_name = ''
+                    if not ch_name:
+                        ch_name = f'CH{ch}'
+                    channel_labels.append(ch_name)
+            result.append((name, channel_labels))
+        return result
 
     # ---- Logging helpers (kept in main so log_signal pyqtSignal works) ----
 

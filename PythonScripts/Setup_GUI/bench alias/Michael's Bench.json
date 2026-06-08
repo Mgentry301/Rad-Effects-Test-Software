@@ -1,0 +1,12 @@
+{
+  "name": "Michael's Bench",
+  "aliases": {
+    "FieldFox 0": "USB0::0x2A8D::0x5C18::MY62151444::INSTR",
+    "Keithley 0": "USB0::0x05E6::0x2230::9100413::INSTR",
+    "Keithley 1": "GPIB0::1::INSTR",
+    "Hittite 0": "ASRL6::INSTR",
+    "Hittite 1": "GPIB0::4::INSTR",
+    "Hittite 2": "GPIB0::27::INSTR",
+    "Keithley 2": "USB0::0x05E6::0x2230::802901012767010005::INSTR"
+  }
+}

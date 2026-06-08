@@ -1,0 +1,86 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "K2-PS1",
+      "channels": {
+        "1": {
+          "voltage": "1.8",
+          "current": "1.5",
+          "output": false,
+          "name": "VDD1P8"
+        },
+        "2": {
+          "voltage": "1.0",
+          "current": "1.5",
+          "output": false,
+          "name": "VDD1D"
+        },
+        "3": {
+          "voltage": "1.0",
+          "current": "5",
+          "output": false,
+          "name": "VDD1C"
+        }
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "K0-PS2",
+      "channels": {
+        "1": {
+          "voltage": "2",
+          "current": "1",
+          "output": false,
+          "name": "VDD2"
+        },
+        "2": {
+          "voltage": "1.0",
+          "current": "0.5",
+          "output": false,
+          "name": "VDD1B"
+        },
+        "3": {
+          "voltage": "1.0",
+          "current": "3",
+          "output": false,
+          "name": "VDD1A"
+        }
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 1",
+      "name": "Hittite 1",
+      "settings": {
+        "frequency": "5.89824",
+        "freq_unit": "GHz",
+        "power": "8",
+        "output": true
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: K2-PS1 Channel 1",
+    "Delay: 1.0 s",
+    "Instrument: Hittite 1",
+    "KeithleyChannel: K2-PS1 Channel 3",
+    "Delay: 1.0 s",
+    "KeithleyChannel: K2-PS1 Channel 2",
+    "KeithleyChannel: K0-PS2 Channel 3",
+    "KeithleyChannel: K0-PS2 Channel 2",
+    "Delay: 0.1 s",
+    "KeithleyChannel: K0-PS2 Channel 1"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "",
+    "sources": "",
+    "monitoring": "",
+    "general": "Config: AD9082 TID"
+  }
+}

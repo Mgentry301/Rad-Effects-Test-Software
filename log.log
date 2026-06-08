@@ -1,0 +1,643 @@
+2026-05-31 12:21:24,778	[INFO] - delete resource in resource manager
+2026-05-31 12:21:31,987	[INFO] - delete resource in resource manager
+2026-05-31 12:21:37,844	[INFO] - ioUsb488: Sun May 31 12:21:37 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:37,844	[INFO] - ioUsb488: Sun May 31 12:21:37 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:21:37,846	[INFO] - ioUsb488: Sun May 31 12:21:37 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:37,847	[INFO] - ioUsb488: Sun May 31 12:21:37 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:21:41,431	[INFO] - delete resource in resource manager
+2026-05-31 12:21:44,244	[INFO] - ioUsb488: Sun May 31 12:21:44 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:44,245	[INFO] - ioUsb488: Sun May 31 12:21:44 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:21:44,247	[INFO] - ioUsb488: Sun May 31 12:21:44 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:44,247	[INFO] - ioUsb488: Sun May 31 12:21:44 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:21:49,702	[INFO] - ioUsb488: Sun May 31 12:21:49 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:49,703	[INFO] - ioUsb488: Sun May 31 12:21:49 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:21:49,713	[INFO] - ioUsb488: Sun May 31 12:21:49 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 12:21:49,713	[INFO] - ioUsb488: Sun May 31 12:21:49 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 12:22:12,279	[INFO] - delete resource in resource manager
+2026-05-31 12:22:12,297	[INFO] - ioUsb488: Sun May 31 12:22:12 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 12:22:12,339	[INFO] - ioUsb488: Sun May 31 12:22:12 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:00:25,726	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : Session::stopIntrThread: Set dying event for 00000257C52B2C50
+2026-05-31 13:00:25,727	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : Session::stopIntrThread: wait thread: 0 for 00000257C52B2C50
+2026-05-31 13:00:25,728	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:00:25,728	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:00:25,729	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : Session::stopIntrThread: Set dying event for 00000257C52B3E50
+2026-05-31 13:00:25,729	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : Session::stopIntrThread: wait thread: 0 for 00000257C52B3E50
+2026-05-31 13:00:25,730	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:00:25,730	[INFO] - ioUsb488: Sun May 31 13:00:25 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:00:25,730	[INFO] - delete resource in resource manager
+2026-05-31 13:00:37,131	[INFO] - delete resource in resource manager
+2026-05-31 13:00:37,293	[INFO] - delete resource in resource manager
+2026-05-31 13:00:46,784	[INFO] - delete resource in resource manager
+2026-05-31 13:00:54,988	[INFO] - ioUsb488: Sun May 31 13:00:54 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:00:55,006	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:00:55,129	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : Session::stopIntrThread: Set dying event for 000001E8A6C99A50
+2026-05-31 13:00:55,130	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : Session::stopIntrThread: wait thread: 0 for 000001E8A6C99A50
+2026-05-31 13:00:55,131	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:00:55,132	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:00:55,132	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : Session::stopIntrThread: Set dying event for 000001E8A6C9D050
+2026-05-31 13:00:55,133	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : Session::stopIntrThread: wait thread: 0 for 000001E8A6C9D050
+2026-05-31 13:00:55,133	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:00:55,134	[INFO] - ioUsb488: Sun May 31 13:00:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:00:57,025	[INFO] - delete resource in resource manager
+2026-05-31 13:01:00,092	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:00,117	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:00,238	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : Session::stopIntrThread: Set dying event for 0000015B2769B450
+2026-05-31 13:01:00,239	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : Session::stopIntrThread: wait thread: 0 for 0000015B2769B450
+2026-05-31 13:01:00,240	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:00,241	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:00,242	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : Session::stopIntrThread: Set dying event for 0000015B27693650
+2026-05-31 13:01:00,243	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : Session::stopIntrThread: wait thread: 0 for 0000015B27693650
+2026-05-31 13:01:00,244	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:00,245	[INFO] - ioUsb488: Sun May 31 13:01:00 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:02,857	[INFO] - delete resource in resource manager
+2026-05-31 13:01:06,689	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:06,706	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:06,826	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : Session::stopIntrThread: Set dying event for 0000018C1E68F450
+2026-05-31 13:01:06,827	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : Session::stopIntrThread: wait thread: 0 for 0000018C1E68F450
+2026-05-31 13:01:06,828	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:06,829	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:06,829	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : Session::stopIntrThread: Set dying event for 0000018C1E687650
+2026-05-31 13:01:06,830	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : Session::stopIntrThread: wait thread: 0 for 0000018C1E687650
+2026-05-31 13:01:06,831	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:06,832	[INFO] - ioUsb488: Sun May 31 13:01:06 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:13,401	[INFO] - ioUsb488: Sun May 31 13:01:13 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:13,446	[INFO] - ioUsb488: Sun May 31 13:01:13 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:42,239	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : Session::stopIntrThread: Set dying event for 0000018C1E687650
+2026-05-31 13:01:42,240	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : Session::stopIntrThread: wait thread: 0 for 0000018C1E687650
+2026-05-31 13:01:42,241	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:42,242	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:42,243	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : Session::stopIntrThread: Set dying event for 0000018C1E68F450
+2026-05-31 13:01:42,244	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : Session::stopIntrThread: wait thread: 0 for 0000018C1E68F450
+2026-05-31 13:01:42,244	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:42,245	[INFO] - ioUsb488: Sun May 31 13:01:42 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:42,245	[INFO] - delete resource in resource manager
+2026-05-31 13:01:48,488	[INFO] - delete resource in resource manager
+2026-05-31 13:01:55,350	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:55,366	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:01:55,490	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : Session::stopIntrThread: Set dying event for 000002D34F68B650
+2026-05-31 13:01:55,490	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : Session::stopIntrThread: wait thread: 0 for 000002D34F68B650
+2026-05-31 13:01:55,491	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:55,491	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:01:55,492	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : Session::stopIntrThread: Set dying event for 000002D34F691050
+2026-05-31 13:01:55,493	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : Session::stopIntrThread: wait thread: 0 for 000002D34F691050
+2026-05-31 13:01:55,493	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:01:55,494	[INFO] - ioUsb488: Sun May 31 13:01:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:02:01,518	[INFO] - ioUsb488: Sun May 31 13:02:01 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:02:01,568	[INFO] - ioUsb488: Sun May 31 13:02:01 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:02:04,295	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : Session::stopIntrThread: Set dying event for 000002D34F68B650
+2026-05-31 13:02:04,296	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : Session::stopIntrThread: wait thread: 0 for 000002D34F68B650
+2026-05-31 13:02:04,297	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:02:04,298	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:02:04,299	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : Session::stopIntrThread: Set dying event for 000002D34F68FE50
+2026-05-31 13:02:04,300	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : Session::stopIntrThread: wait thread: 0 for 000002D34F68FE50
+2026-05-31 13:02:04,301	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:02:04,301	[INFO] - ioUsb488: Sun May 31 13:02:04 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:02:04,302	[INFO] - delete resource in resource manager
+2026-05-31 13:03:33,944	[INFO] - delete resource in resource manager
+2026-05-31 13:03:40,158	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:03:40,169	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:03:40,292	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : Session::stopIntrThread: Set dying event for 0000027CDF0A0450
+2026-05-31 13:03:40,293	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : Session::stopIntrThread: wait thread: 0 for 0000027CDF0A0450
+2026-05-31 13:03:40,294	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:03:40,294	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:03:40,295	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : Session::stopIntrThread: Set dying event for 0000027CDF098650
+2026-05-31 13:03:40,296	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : Session::stopIntrThread: wait thread: 0 for 0000027CDF098650
+2026-05-31 13:03:40,296	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:03:40,296	[INFO] - ioUsb488: Sun May 31 13:03:40 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:03:45,555	[INFO] - ioUsb488: Sun May 31 13:03:45 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:03:45,597	[INFO] - ioUsb488: Sun May 31 13:03:45 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:17:08,444	[INFO] - ioUsb488: Sun May 31 13:17:08 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 13:17:08,445	[INFO] - ioUsb488: Sun May 31 13:17:08 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 13:17:09,703	[INFO] - ioUsb488: Sun May 31 13:17:09 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 13:17:09,704	[INFO] - ioUsb488: Sun May 31 13:17:09 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 13:21:37,193	[INFO] - delete resource in resource manager
+2026-05-31 13:22:28,936	[INFO] - ioUsb488: Sun May 31 13:22:28 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:22:28,953	[INFO] - ioUsb488: Sun May 31 13:22:28 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:22:29,077	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : Session::stopIntrThread: Set dying event for 00000228E8A7A250
+2026-05-31 13:22:29,079	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : Session::stopIntrThread: wait thread: 0 for 00000228E8A7A250
+2026-05-31 13:22:29,080	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:22:29,080	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:22:29,081	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : Session::stopIntrThread: Set dying event for 00000228E8A77E50
+2026-05-31 13:22:29,082	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : Session::stopIntrThread: wait thread: 0 for 00000228E8A77E50
+2026-05-31 13:22:29,083	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:22:29,083	[INFO] - ioUsb488: Sun May 31 13:22:29 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:22:57,270	[INFO] - ioUsb488: Sun May 31 13:22:57 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:22:57,303	[INFO] - ioUsb488: Sun May 31 13:22:57 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:24:26,118	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : Session::stopIntrThread: Set dying event for 00000228E8A79050
+2026-05-31 13:24:26,119	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : Session::stopIntrThread: wait thread: 0 for 00000228E8A79050
+2026-05-31 13:24:26,120	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:24:26,121	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:24:26,121	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : Session::stopIntrThread: Set dying event for 00000228E8A7A250
+2026-05-31 13:24:26,122	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : Session::stopIntrThread: wait thread: 0 for 00000228E8A7A250
+2026-05-31 13:24:26,122	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:24:26,122	[INFO] - ioUsb488: Sun May 31 13:24:26 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:24:26,123	[INFO] - delete resource in resource manager
+2026-05-31 13:27:00,004	[INFO] - delete resource in resource manager
+2026-05-31 13:27:21,417	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:27:21,435	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:27:21,557	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : Session::stopIntrThread: Set dying event for 000001A28245B850
+2026-05-31 13:27:21,559	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : Session::stopIntrThread: wait thread: 0 for 000001A28245B850
+2026-05-31 13:27:21,560	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:27:21,561	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:27:21,562	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : Session::stopIntrThread: Set dying event for 000001A282463650
+2026-05-31 13:27:21,563	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : Session::stopIntrThread: wait thread: 0 for 000001A282463650
+2026-05-31 13:27:21,564	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:27:21,565	[INFO] - ioUsb488: Sun May 31 13:27:21 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:27:27,391	[INFO] - ioUsb488: Sun May 31 13:27:27 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:27:27,435	[INFO] - ioUsb488: Sun May 31 13:27:27 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:32:46,554	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : Session::stopIntrThread: Set dying event for 000001A28245B850
+2026-05-31 13:32:46,555	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : Session::stopIntrThread: wait thread: 0 for 000001A28245B850
+2026-05-31 13:32:46,556	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:32:46,556	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:32:46,557	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : Session::stopIntrThread: Set dying event for 000001A282462450
+2026-05-31 13:32:46,557	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : Session::stopIntrThread: wait thread: 0 for 000001A282462450
+2026-05-31 13:32:46,558	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:32:46,558	[INFO] - ioUsb488: Sun May 31 13:32:46 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:32:46,559	[INFO] - delete resource in resource manager
+2026-05-31 13:36:31,700	[INFO] - delete resource in resource manager
+2026-05-31 13:36:47,046	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:36:47,058	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:36:47,183	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : Session::stopIntrThread: Set dying event for 000001CBFB089050
+2026-05-31 13:36:47,183	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : Session::stopIntrThread: wait thread: 0 for 000001CBFB089050
+2026-05-31 13:36:47,185	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:36:47,185	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:36:47,186	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : Session::stopIntrThread: Set dying event for 000001CBFB087E50
+2026-05-31 13:36:47,187	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : Session::stopIntrThread: wait thread: 0 for 000001CBFB087E50
+2026-05-31 13:36:47,188	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:36:47,188	[INFO] - ioUsb488: Sun May 31 13:36:47 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:36:53,652	[INFO] - ioUsb488: Sun May 31 13:36:53 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:36:53,686	[INFO] - ioUsb488: Sun May 31 13:36:53 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:43:28,357	[INFO] - ioUsb488: Sun May 31 13:43:28 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 13:43:28,357	[INFO] - ioUsb488: Sun May 31 13:43:28 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 13:43:29,850	[INFO] - ioUsb488: Sun May 31 13:43:29 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 13:43:29,851	[INFO] - ioUsb488: Sun May 31 13:43:29 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 13:43:50,272	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:43:50,273	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 13:43:50,275	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:43:50,276	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 13:43:50,277	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:43:50,278	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 13:43:50,279	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:43:50,280	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 13:43:50,282	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Error, UsbIProcSupport::SendIProcInterrupt(), CallNamedPipeM() to [iproc488] indicated error [9]
+
+2026-05-31 13:43:50,283	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Error, DevSession::docmd(), iusbctl(I_USB_FLUSH_STB_QUEUE) request to [iproc488]failed with err=128
+
+2026-05-31 13:43:50,286	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Session::stopIntrThread: Set dying event for 000001CBFB087E50
+2026-05-31 13:43:50,287	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Session::stopIntrThread: wait thread: 0 for 000001CBFB087E50
+2026-05-31 13:43:50,288	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:43:50,290	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:43:50,292	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Error, UsbIProcSupport::SendIProcInterrupt(), CallNamedPipeM() to [iproc488] indicated error [9]
+
+2026-05-31 13:43:50,293	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Error, DevSession::docmd(), iusbctl(I_USB_FLUSH_STB_QUEUE) request to [iproc488]failed with err=128
+
+2026-05-31 13:43:50,294	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Session::stopIntrThread: Set dying event for 000001CBFB085A50
+2026-05-31 13:43:50,295	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : Session::stopIntrThread: wait thread: 0 for 000001CBFB085A50
+2026-05-31 13:43:50,296	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 13:43:50,298	[INFO] - ioUsb488: Sun May 31 13:43:50 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 13:43:50,299	[INFO] - delete resource in resource manager
+2026-05-31 13:47:45,780	[INFO] - TraceStatus(pid=8036): TraceStatus::OpenSharedMemory, TraceData Shared Memory (version 20090923) Initialized
+2026-05-31 13:47:46,024	[INFO] - delete resource in resource manager
+2026-05-31 13:48:01,694	[INFO] - ioUsb488: Sun May 31 13:48:01 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 13:48:01,695	[INFO] - ioUsb488: Sun May 31 13:48:01 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 13:48:01,696	[INFO] - ioUsb488: Sun May 31 13:48:01 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 13:48:01,697	[INFO] - ioUsb488: Sun May 31 13:48:01 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 13:51:51,280	[INFO] - ioUsb488: Sun May 31 13:51:51 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 13:51:51,345	[INFO] - ioUsb488: Sun May 31 13:51:51 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:07:19,028	[INFO] - delete resource in resource manager
+2026-05-31 14:07:35,095	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:07:35,115	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:07:35,239	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : Session::stopIntrThread: Set dying event for 0000020C26C76C50
+2026-05-31 14:07:35,241	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : Session::stopIntrThread: wait thread: 0 for 0000020C26C76C50
+2026-05-31 14:07:35,241	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:07:35,242	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:07:35,243	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : Session::stopIntrThread: Set dying event for 0000020C26C77E50
+2026-05-31 14:07:35,243	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : Session::stopIntrThread: wait thread: 0 for 0000020C26C77E50
+2026-05-31 14:07:35,244	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:07:35,245	[INFO] - ioUsb488: Sun May 31 14:07:35 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:07:41,653	[INFO] - ioUsb488: Sun May 31 14:07:41 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:07:41,687	[INFO] - ioUsb488: Sun May 31 14:07:41 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:07:49,362	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : Session::stopIntrThread: Set dying event for 0000020C26C79050
+2026-05-31 14:07:49,363	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : Session::stopIntrThread: wait thread: 0 for 0000020C26C79050
+2026-05-31 14:07:49,363	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:07:49,364	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:07:49,365	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : Session::stopIntrThread: Set dying event for 0000020C26C7A250
+2026-05-31 14:07:49,365	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : Session::stopIntrThread: wait thread: 0 for 0000020C26C7A250
+2026-05-31 14:07:49,365	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:07:49,366	[INFO] - ioUsb488: Sun May 31 14:07:49 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:07:49,366	[INFO] - delete resource in resource manager
+2026-05-31 14:09:09,392	[INFO] - delete resource in resource manager
+2026-05-31 14:09:14,181	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:09:14,194	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:09:14,315	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : Session::stopIntrThread: Set dying event for 000001986C24A650
+2026-05-31 14:09:14,316	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : Session::stopIntrThread: wait thread: 0 for 000001986C24A650
+2026-05-31 14:09:14,317	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:09:14,318	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:09:14,320	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : Session::stopIntrThread: Set dying event for 000001986C243A50
+2026-05-31 14:09:14,320	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : Session::stopIntrThread: wait thread: 0 for 000001986C243A50
+2026-05-31 14:09:14,321	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:09:14,322	[INFO] - ioUsb488: Sun May 31 14:09:14 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:09:20,523	[INFO] - ioUsb488: Sun May 31 14:09:20 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:09:20,562	[INFO] - ioUsb488: Sun May 31 14:09:20 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:12:26,111	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : Session::stopIntrThread: Set dying event for 000001986C247050
+2026-05-31 14:12:26,112	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : Session::stopIntrThread: wait thread: 0 for 000001986C247050
+2026-05-31 14:12:26,113	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:26,113	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:12:26,114	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : Session::stopIntrThread: Set dying event for 000001986C243A50
+2026-05-31 14:12:26,115	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : Session::stopIntrThread: wait thread: 0 for 000001986C243A50
+2026-05-31 14:12:26,115	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:26,116	[INFO] - ioUsb488: Sun May 31 14:12:26 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:12:26,116	[INFO] - delete resource in resource manager
+2026-05-31 14:12:29,669	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : Session::stopIntrThread: Set dying event for 0000022502A71050
+2026-05-31 14:12:29,670	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : Session::stopIntrThread: wait thread: 0 for 0000022502A71050
+2026-05-31 14:12:29,671	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:29,671	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:12:29,672	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : Session::stopIntrThread: Set dying event for 0000022502A6DA50
+2026-05-31 14:12:29,673	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : Session::stopIntrThread: wait thread: 0 for 0000022502A6DA50
+2026-05-31 14:12:29,673	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:29,674	[INFO] - ioUsb488: Sun May 31 14:12:29 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:12:29,674	[INFO] - delete resource in resource manager
+2026-05-31 14:12:39,703	[INFO] - delete resource in resource manager
+2026-05-31 14:12:55,831	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:12:55,855	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:12:55,976	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : Session::stopIntrThread: Set dying event for 0000022F24E8EE50
+2026-05-31 14:12:55,976	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : Session::stopIntrThread: wait thread: 0 for 0000022F24E8EE50
+2026-05-31 14:12:55,977	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:55,977	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:12:55,978	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : Session::stopIntrThread: Set dying event for 0000022F24E8DC50
+2026-05-31 14:12:55,979	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : Session::stopIntrThread: wait thread: 0 for 0000022F24E8DC50
+2026-05-31 14:12:55,979	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:12:55,979	[INFO] - ioUsb488: Sun May 31 14:12:55 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:13:01,792	[INFO] - ioUsb488: Sun May 31 14:13:01 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:13:01,826	[INFO] - ioUsb488: Sun May 31 14:13:01 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:28:16,271	[INFO] - ioUsb488: Sun May 31 14:28:16 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 14:28:16,272	[INFO] - ioUsb488: Sun May 31 14:28:16 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 14:28:16,273	[INFO] - ioUsb488: Sun May 31 14:28:16 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 14:28:17,850	[INFO] - ioUsb488: Sun May 31 14:28:17 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 14:28:17,851	[INFO] - ioUsb488: Sun May 31 14:28:17 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 14:28:23,889	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:28:23,889	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 14:28:23,890	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:28:23,890	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 14:28:23,891	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:28:23,891	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 14:28:23,892	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:28:23,892	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : iwrite 1230 err,len=0x10, partialCount:0x0, pad:0x0
+
+2026-05-31 14:28:23,894	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Error, UsbIProcSupport::SendIProcInterrupt(), CallNamedPipeM() to [iproc488] indicated error [9]
+
+2026-05-31 14:28:23,894	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Error, DevSession::docmd(), iusbctl(I_USB_FLUSH_STB_QUEUE) request to [iproc488]failed with err=128
+
+2026-05-31 14:28:23,895	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Session::stopIntrThread: Set dying event for 0000022F24E8DC50
+2026-05-31 14:28:23,895	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Session::stopIntrThread: wait thread: 0 for 0000022F24E8DC50
+2026-05-31 14:28:23,896	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:28:23,896	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:28:23,898	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Error, UsbIProcSupport::SendIProcInterrupt(), CallNamedPipeM() to [iproc488] indicated error [9]
+
+2026-05-31 14:28:23,898	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Error, DevSession::docmd(), iusbctl(I_USB_FLUSH_STB_QUEUE) request to [iproc488]failed with err=128
+
+2026-05-31 14:28:23,899	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Session::stopIntrThread: Set dying event for 0000022F24E92450
+2026-05-31 14:28:23,899	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : Session::stopIntrThread: wait thread: 0 for 0000022F24E92450
+2026-05-31 14:28:23,899	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:28:23,900	[INFO] - ioUsb488: Sun May 31 14:28:23 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:28:23,900	[INFO] - delete resource in resource manager
+2026-05-31 14:35:44,484	[INFO] - delete resource in resource manager
+2026-05-31 14:36:07,134	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:36:07,145	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:36:07,269	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : Session::stopIntrThread: Set dying event for 000001EBC1A66E50
+2026-05-31 14:36:07,270	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : Session::stopIntrThread: wait thread: 0 for 000001EBC1A66E50
+2026-05-31 14:36:07,271	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:36:07,272	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:36:07,273	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : Session::stopIntrThread: Set dying event for 000001EBC1A68050
+2026-05-31 14:36:07,274	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : Session::stopIntrThread: wait thread: 0 for 000001EBC1A68050
+2026-05-31 14:36:07,275	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:36:07,276	[INFO] - ioUsb488: Sun May 31 14:36:07 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:36:13,883	[INFO] - ioUsb488: Sun May 31 14:36:13 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:36:13,919	[INFO] - ioUsb488: Sun May 31 14:36:13 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:44:04,499	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : Session::stopIntrThread: Set dying event for 000001EBC1A66E50
+2026-05-31 14:44:04,504	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : Session::stopIntrThread: wait thread: 0 for 000001EBC1A66E50
+2026-05-31 14:44:04,506	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:44:04,508	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:44:04,512	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : Session::stopIntrThread: Set dying event for 000001EBC1A68050
+2026-05-31 14:44:04,517	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : Session::stopIntrThread: wait thread: 0 for 000001EBC1A68050
+2026-05-31 14:44:04,519	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:44:04,522	[INFO] - ioUsb488: Sun May 31 14:44:04 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:44:04,524	[INFO] - delete resource in resource manager
+2026-05-31 14:55:40,911	[INFO] - delete resource in resource manager
+2026-05-31 14:55:56,458	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:55:56,470	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:55:56,592	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : Session::stopIntrThread: Set dying event for 00000218CECBCE50
+2026-05-31 14:55:56,593	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : Session::stopIntrThread: wait thread: 0 for 00000218CECBCE50
+2026-05-31 14:55:56,594	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:55:56,594	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:55:56,595	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : Session::stopIntrThread: Set dying event for 00000218CECBE050
+2026-05-31 14:55:56,595	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : Session::stopIntrThread: wait thread: 0 for 00000218CECBE050
+2026-05-31 14:55:56,596	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 14:55:56,596	[INFO] - ioUsb488: Sun May 31 14:55:56 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 14:56:07,344	[INFO] - ioUsb488: Sun May 31 14:56:07 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 14:56:07,391	[INFO] - ioUsb488: Sun May 31 14:56:07 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:00:30,322	[INFO] - ioUsb488: Sun May 31 15:00:30 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 15:00:30,323	[INFO] - ioUsb488: Sun May 31 15:00:30 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 15:00:30,666	[INFO] - ioUsb488: Sun May 31 15:00:30 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 15:00:30,667	[INFO] - ioUsb488: Sun May 31 15:00:30 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 15:42:48,997	[INFO] - ioUsb488: Sun May 31 15:42:48 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:44:59,202	[INFO] - TraceStatus(pid=12408): TraceStatus::OpenSharedMemory, TraceData Shared Memory (version 20090923) Initialized
+2026-05-31 15:44:59,532	[INFO] - delete resource in resource manager
+2026-05-31 15:45:23,722	[INFO] - ioUsb488: Sun May 31 15:45:23 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:45:23,733	[INFO] - ioUsb488: Sun May 31 15:45:23 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:48:28,961	[INFO] - delete resource in resource manager
+2026-05-31 15:48:35,571	[INFO] - TraceStatus(pid=19408): TraceStatus::OpenSharedMemory, TraceData Shared Memory (version 20090923) Initialized
+2026-05-31 15:48:35,624	[INFO] - delete resource in resource manager
+2026-05-31 15:48:41,620	[INFO] - ioUsb488: Sun May 31 15:48:41 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:48:41,652	[INFO] - ioUsb488: Sun May 31 15:48:41 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:48:47,931	[INFO] - ioUsb488: Sun May 31 15:48:47 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:48:47,948	[INFO] - ioUsb488: Sun May 31 15:48:47 2026 : ERROR, IntfResource::initObject, OpenNamedPipeM(data) failed, is [iproc488] running?
+
+2026-05-31 15:52:38,489	[INFO] - delete resource in resource manager
+2026-05-31 15:54:08,047	[INFO] - delete resource in resource manager
+2026-05-31 15:54:15,004	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:54:15,027	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:54:15,051	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:54:15,215	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: Set dying event for 000001B868465C50
+2026-05-31 15:54:15,217	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: wait thread: 0 for 000001B868465C50
+2026-05-31 15:54:15,218	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 15:54:15,219	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 15:54:15,220	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: Set dying event for 000001B868469250
+2026-05-31 15:54:15,220	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: wait thread: 0 for 000001B868469250
+2026-05-31 15:54:15,221	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 15:54:15,221	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 15:54:15,271	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: Set dying event for 000001B86846A450
+2026-05-31 15:54:15,273	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : Session::stopIntrThread: wait thread: 0 for 000001B86846A450
+2026-05-31 15:54:15,274	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 15:54:15,275	[INFO] - ioUsb488: Sun May 31 15:54:15 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 15:54:22,170	[INFO] - ioUsb488: Sun May 31 15:54:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 15:54:22,217	[INFO] - ioUsb488: Sun May 31 15:54:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 19:15:58,474	[INFO] - ioUsb488: Sun May 31 19:15:58 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 19:15:58,477	[INFO] - ioUsb488: Sun May 31 19:15:58 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 19:15:58,488	[INFO] - ioUsb488: Sun May 31 19:15:58 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 19:15:58,490	[INFO] - ioUsb488: Sun May 31 19:15:58 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 19:16:00,954	[INFO] - ioUsb488: Sun May 31 19:16:00 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 19:16:00,987	[INFO] - ioUsb488: Sun May 31 19:16:00 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 22:20:22,780	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : Session::stopIntrThread: Set dying event for 000001B868465C50
+2026-05-31 22:20:22,781	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : Session::stopIntrThread: wait thread: 0 for 000001B868465C50
+2026-05-31 22:20:22,781	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 22:20:22,782	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 22:20:22,783	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : Session::stopIntrThread: Set dying event for 000001B868469250
+2026-05-31 22:20:22,783	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : Session::stopIntrThread: wait thread: 0 for 000001B868469250
+2026-05-31 22:20:22,783	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 22:20:22,784	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 22:20:22,784	[INFO] - delete resource in resource manager
+2026-05-31 22:20:22,812	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 22:20:22,843	[INFO] - ioUsb488: Sun May 31 22:20:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 23:10:57,309	[INFO] - delete resource in resource manager
+2026-05-31 23:11:22,887	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 23:11:22,901	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 23:11:22,917	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 23:11:22,918	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 23:11:22,924	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : Error, UsbIntfDeviceFactory::CreateUsbIntfDevice iptGetUsbDevicePnPString device[] not found. GLE=[0]
+
+2026-05-31 23:11:22,925	[INFO] - ioUsb488: Sun May 31 23:11:22 2026 : Usb488IntfDevice::initObject, failed with siclErr=[10]
+
+2026-05-31 23:11:23,044	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : Session::stopIntrThread: Set dying event for 0000024626085A50
+2026-05-31 23:11:23,045	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : Session::stopIntrThread: wait thread: 0 for 0000024626085A50
+2026-05-31 23:11:23,047	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 23:11:23,048	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 23:11:23,050	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : Session::stopIntrThread: Set dying event for 000002462608B450
+2026-05-31 23:11:23,051	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : Session::stopIntrThread: wait thread: 0 for 000002462608B450
+2026-05-31 23:11:23,052	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 2, dying.
+
+2026-05-31 23:11:23,053	[INFO] - ioUsb488: Sun May 31 23:11:23 2026 : DevResource::delResourceIfUnused, close file handle.
+
+2026-05-31 23:11:28,675	[INFO] - ioUsb488: Sun May 31 23:11:28 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 23:11:28,721	[INFO] - ioUsb488: Sun May 31 23:11:28 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
+2026-05-31 23:33:41,299	[INFO] - ioUsb488: Sun May 31 23:33:41 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 23:33:41,300	[INFO] - ioUsb488: Sun May 31 23:33:41 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-05-31 23:33:42,948	[INFO] - ioUsb488: Sun May 31 23:33:42 2026 : intrThread(pDev0->IAmIproc=0) got a wfmo WAIT_OBJECT_0 + 0, InvalidHandle.
+
+2026-05-31 23:33:42,948	[INFO] - ioUsb488: Sun May 31 23:33:42 2026 : intrThread(pDev0->IAmIproc=0): close file handle.
+2026-06-02 07:09:06,412	[INFO] - ioUsb488: Tue Jun  2 07:09:06 2026 : DEBUG: Client called GetHandleFromIproc(isIproc=0,LU=20)...
+
