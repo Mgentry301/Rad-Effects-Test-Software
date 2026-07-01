@@ -1,26 +1,5 @@
 from PyQt5 import QtWidgets
 
-
-class _RefreshOnOpenComboBox(QtWidgets.QComboBox):
-    """A combo box that re-populates itself each time the dropdown is opened.
-
-    This ensures the latest user-given channel names are shown even if they
-    were edited after the combo was last refreshed.
-    """
-
-    def __init__(self, refresh_callback=None, parent=None):
-        super().__init__(parent)
-        self._refresh_callback = refresh_callback
-
-    def showPopup(self):
-        if self._refresh_callback:
-            try:
-                self._refresh_callback()
-            except Exception:
-                pass
-        super().showPopup()
-
-
 class PowerSequenceBuilder(QtWidgets.QGroupBox):
     def set_sequence(self, sequence):
         self.seq_list.clear()
@@ -29,12 +8,15 @@ class PowerSequenceBuilder(QtWidgets.QGroupBox):
 
     def set_use_sequence(self, use_seq):
         self.enable_checkbox.setChecked(bool(use_seq))
-    def __init__(self, parent=None, get_instruments_callback=None):
+    def __init__(self, parent=None, get_instruments_callback=None, get_channels_callback=None):
         super().__init__('Power-Up Sequence Builder', parent)
         self.get_instruments_callback = get_instruments_callback
+        # Optional callback: given an instrument (tab) name, returns a list of
+        # (channel_number, channel_label) tuples for multi-channel supplies.
+        self.get_channels_callback = get_channels_callback
         layout = QtWidgets.QVBoxLayout(self)
         add_row = QtWidgets.QHBoxLayout()
-        self.instr_combo = _RefreshOnOpenComboBox(refresh_callback=self.refresh_instr_combo)
+        self.instr_combo = QtWidgets.QComboBox()
         self.refresh_instr_combo()
         add_row.addWidget(QtWidgets.QLabel('Add Instrument:'))
         add_row.addWidget(self.instr_combo)
@@ -56,44 +38,41 @@ class PowerSequenceBuilder(QtWidgets.QGroupBox):
         layout.addWidget(self.enable_checkbox)
     def refresh_instr_combo(self):
         self.instr_combo.clear()
-        if not self.get_instruments_callback:
-            return
-        for entry in self.get_instruments_callback():
-            # Each entry may be a plain name (str), a (name, n_channels) pair,
-            # or a (name, [channel_label, ...]) pair.
-            if isinstance(entry, (tuple, list)):
-                name = entry[0]
-                ch_info = entry[1] if len(entry) > 1 else 0
-            else:
-                name = entry
-                ch_info = 0
-            if not name:
-                continue
-            # Whole-instrument entry: display text == sequence token.
-            self.instr_combo.addItem(name, name)
-            # Normalize channel info into a list of display labels.
-            if isinstance(ch_info, (list, tuple)):
-                channel_labels = list(ch_info)
-            else:
-                channel_labels = [f'CH{ch}' for ch in range(1, int(ch_info) + 1)]
-            # Expand multi-channel supplies into per-channel options.  The
-            # display shows the user-given channel name; the item data holds the
-            # canonical "Name Channel N" token the run-sequence expects.
-            for idx, label in enumerate(channel_labels, start=1):
-                token = f'{name} Channel {idx}'
-                display = f'{name} \u2014 {label} (Ch {idx})'
-                self.instr_combo.addItem(display, token)
+        if self.get_instruments_callback:
+            for name in self.get_instruments_callback():
+                # Whole instrument
+                self.instr_combo.addItem(name, ('instrument', name, None))
+                # Individual Keithley channels (fixed 1-3)
+                if name.startswith('Keithley'):
+                    for ch in (1, 2, 3):
+                        self.instr_combo.addItem(
+                            f'{name} Channel {ch}', ('keithley_channel', name, ch))
+                # Individual channels for other multi-channel supplies (e.g. E36233A)
+                elif self.get_channels_callback:
+                    try:
+                        channels = self.get_channels_callback(name) or []
+                    except Exception:
+                        channels = []
+                    for ch_num, ch_label in channels:
+                        label = (str(ch_label).strip() or str(ch_num))
+                        disp = f'{name} Channel {ch_num}'
+                        if label and label != str(ch_num):
+                            disp = f'{name} Channel {ch_num} ({label})'
+                        self.instr_combo.addItem(disp, ('supply_channel', name, ch_num))
     def add_instr(self):
-        # The display text may be a friendly channel name; the canonical token
-        # used by the run-sequence is stored as the combo item data.
-        token = self.instr_combo.currentData()
-        if token is None:
-            token = self.instr_combo.currentText()
-        if token:
-            if 'Channel' in token:
-                self.seq_list.addItem(f'KeithleyChannel: {token}')
-            else:
-                self.seq_list.addItem(f'Instrument: {token}')
+        data = self.instr_combo.currentData()
+        if not data:
+            name = self.instr_combo.currentText()
+            if name:
+                self.seq_list.addItem(f'Instrument: {name}')
+            return
+        kind, name, ch = data
+        if kind == 'keithley_channel':
+            self.seq_list.addItem(f'KeithleyChannel: {name} Channel {ch}')
+        elif kind == 'supply_channel':
+            self.seq_list.addItem(f'SupplyChannel: {name} Channel {ch}')
+        else:
+            self.seq_list.addItem(f'Instrument: {name}')
     def add_delay(self):
         delay, ok = QtWidgets.QInputDialog.getDouble(self, 'Add Delay', 'Delay (seconds):', 1.0, 0.1, 60.0, 1)
         if ok:

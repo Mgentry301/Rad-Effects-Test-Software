@@ -178,12 +178,30 @@ class ConfigMixin:
                     }
             elif isinstance(widget, KeysightE36233APanel):
                 entry['channels'] = {}
+                # Make sure the visible fields are stored into the active channel.
+                if hasattr(widget, 'sync_active_channel'):
+                    widget.sync_active_channel()
+                ch_names = getattr(widget, 'channel_names', None)
+                ch_volts = getattr(widget, 'channel_voltages', None)
+                ch_currs = getattr(widget, 'channel_currents', None)
                 for ch in (1, 2):
+                    if ch_names and (ch - 1) < len(ch_names):
+                        ch_name = ch_names[ch - 1]
+                    else:
+                        ch_name = f'CH{ch}'
+                    if ch_volts and (ch - 1) < len(ch_volts):
+                        ch_voltage = ch_volts[ch - 1]
+                    else:
+                        ch_voltage = widget.voltage_edit.text()
+                    if ch_currs and (ch - 1) < len(ch_currs):
+                        ch_current = ch_currs[ch - 1]
+                    else:
+                        ch_current = widget.current_edit.text()
                     entry['channels'][ch] = {
-                        'voltage': widget.voltage_edit.text(),
-                        'current': widget.current_edit.text(),
+                        'voltage': ch_voltage,
+                        'current': ch_current,
                         'output': widget.onoff_btn.isChecked(),
-                        'name': f'CH{ch}'
+                        'name': ch_name
                     }
             elif isinstance(widget, HittiteSigGenPanel):
                 try:
@@ -455,6 +473,8 @@ class ConfigMixin:
                 tab_label = entry.get('name', resource)
                 self.tabs.addTab(panel, tab_label)
                 used_resources.add(resource)
+                if resource:
+                    panel.resource = resource
                 if hasattr(panel, 'resource_edit'):
                     panel.resource_edit.setText(resource)
                 if hasattr(panel, 'name_edit'):
@@ -487,6 +507,68 @@ class ConfigMixin:
                                     panel.inst.set_output(ch, bool(ch_cfg.get('output', False)))
                             except Exception:
                                 pass
+                elif inst_type == 'Keysight E36233A':
+                    try:
+                        ch_cfgs = entry.get('channels', {})
+                        names = list(getattr(panel, 'channel_names', ['1', '2']))
+                        volts = list(getattr(panel, 'channel_voltages', ['0.0', '0.0']))
+                        currs = list(getattr(panel, 'channel_currents', ['0.0', '0.0']))
+                        for ch in (1, 2):
+                            ch_cfg = ch_cfgs.get(str(ch)) or ch_cfgs.get(ch)
+                            if not ch_cfg:
+                                continue
+                            nm = ch_cfg.get('name') if isinstance(ch_cfg, dict) else None
+                            if nm is not None and (ch - 1) < len(names):
+                                names[ch - 1] = str(nm)
+                            v = ch_cfg.get('voltage') if isinstance(ch_cfg, dict) else None
+                            if v is not None and (ch - 1) < len(volts):
+                                volts[ch - 1] = str(v)
+                            i = ch_cfg.get('current') if isinstance(ch_cfg, dict) else None
+                            if i is not None and (ch - 1) < len(currs):
+                                currs[ch - 1] = str(i)
+                        if hasattr(panel, 'channel_names'):
+                            panel.channel_names = names
+                        if hasattr(panel, 'channel_voltages'):
+                            panel.channel_voltages = volts
+                        if hasattr(panel, 'channel_currents'):
+                            panel.channel_currents = currs
+                        if hasattr(panel, 'ch1_name_edit'):
+                            panel.ch1_name_edit.setText(names[0])
+                        if hasattr(panel, 'ch2_name_edit'):
+                            panel.ch2_name_edit.setText(names[1])
+                        if hasattr(panel, '_rebuild_channel_combo'):
+                            panel._rebuild_channel_combo()
+                        if hasattr(panel, 'apply_channel_setpoints'):
+                            panel.apply_channel_setpoints()
+                        # Push both channels' set-points to the supply, but do
+                        # NOT energize outputs on load. Supplies should only turn
+                        # on at the user's explicit command.
+                        supply = getattr(panel, 'supply', None)
+                        if supply is not None:
+                            for ch in (1, 2):
+                                ch_cfg = ch_cfgs.get(str(ch)) or ch_cfgs.get(ch)
+                                if not ch_cfg:
+                                    continue
+                                try:
+                                    if ch_cfg.get('voltage') is not None:
+                                        supply.set_voltage(ch, str(ch_cfg.get('voltage')))
+                                    if ch_cfg.get('current') is not None:
+                                        supply.set_current(ch, str(ch_cfg.get('current')))
+                                    # Always leave the output off after loading.
+                                    supply.output_off(ch)
+                                except Exception:
+                                    pass
+                        # Reflect outputs as OFF on the toggle button after load.
+                        try:
+                            if hasattr(panel, 'onoff_btn'):
+                                panel.onoff_btn.setChecked(False)
+                                panel.is_on = False
+                                if hasattr(panel, '_update_onoff_btn_color'):
+                                    panel._update_onoff_btn_color(False)
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
                 elif inst_type == 'Keysight EL34243A':
                     tab_label = entry.get('name', resource)
                     if hasattr(panel, 'resource_edit'):
