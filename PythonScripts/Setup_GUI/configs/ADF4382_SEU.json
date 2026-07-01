@@ -31,7 +31,7 @@
       "name": "Hittite 0 REF_P",
       "dut_port": "REF_P",
       "settings": {
-        "frequency": "125",
+        "frequency": "100",
         "freq_unit": "MHz",
         "power": "0",
         "output": true

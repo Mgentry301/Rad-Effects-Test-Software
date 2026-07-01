@@ -2,80 +2,76 @@
   "instruments": [
     {
       "type": "Keithley 2230",
-      "resource": "alias:Keithley 0",
-      "name": "K2-PS1",
+      "resource": "alias:Keithley 1",
+      "name": "PS2",
       "channels": {
         "1": {
           "voltage": "1.8",
-          "current": "1.5",
+          "current": "1.0",
           "output": false,
           "name": "VDD1P8"
         },
         "2": {
-          "voltage": "1.0",
-          "current": "1.5",
+          "voltage": "1.1",
+          "current": "6",
           "output": false,
           "name": "VDD1D"
         },
         "3": {
           "voltage": "1.0",
-          "current": "5",
+          "current": "3.0",
           "output": false,
           "name": "VDD1C"
         }
       }
     },
     {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0",
+      "settings": {
+        "frequency": "5.89824",
+        "freq_unit": "GHz",
+        "power": "6",
+        "output": false
+      }
+    },
+    {
       "type": "Keithley 2230",
-      "resource": "alias:Keithley 1",
-      "name": "K0-PS2",
+      "resource": "alias:Keithley 2",
+      "name": "PS1",
       "channels": {
         "1": {
-          "voltage": "2",
-          "current": "1",
+          "voltage": "2.0",
+          "current": "1.0",
           "output": false,
           "name": "VDD2"
         },
         "2": {
           "voltage": "1.0",
-          "current": "0.5",
+          "current": "6",
           "output": false,
           "name": "VDD1B"
         },
         "3": {
           "voltage": "1.0",
-          "current": "3",
+          "current": "1.5",
           "output": false,
           "name": "VDD1A"
         }
       }
-    },
-    {
-      "type": "Hittite Sig Gen",
-      "resource": "alias:Hittite 1",
-      "name": "Hittite 1",
-      "settings": {
-        "frequency": "5.89824",
-        "freq_unit": "GHz",
-        "power": "8",
-        "output": true
-      }
     }
   ],
   "sequence": [
-    "KeithleyChannel: K2-PS1 Channel 1",
-    "Delay: 1.0 s",
-    "Instrument: Hittite 1",
-    "KeithleyChannel: K2-PS1 Channel 3",
-    "Delay: 1.0 s",
-    "KeithleyChannel: K2-PS1 Channel 2",
-    "KeithleyChannel: K0-PS2 Channel 3",
-    "KeithleyChannel: K0-PS2 Channel 2",
+    "KeithleyChannel: PS2 Channel 2",
     "Delay: 0.1 s",
-    "KeithleyChannel: K0-PS2 Channel 1"
+    "KeithleyChannel: PS2 Channel 1",
+    "Delay: 0.5 s",
+    "KeithleyChannel: PS1 Channel 1",
+    "Instrument: Hittite 0"
   ],
   "use_sequence": true,
-  "program_logic_path": "",
+  "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADF4382.py",
   "register_read_array": [],
   "notes": {
     "connections": "",
