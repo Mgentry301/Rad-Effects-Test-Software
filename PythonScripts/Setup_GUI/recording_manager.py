@@ -797,17 +797,32 @@ class RecordingMixin:
         try:
             if not logic_path or not os.path.exists(logic_path):
                 return ''
-            import re
             with open(logic_path, 'r', encoding='utf-8', errors='ignore') as f:
                 src = f.read()
-            m = re.search(r'\bContextPath\s*=\s*(["\\\'])(.+?)\1', src)
-            if not m:
-                return ''
-            raw = m.group(2)
-            try:
-                return raw.encode('utf-8').decode('unicode_escape')
-            except Exception:
-                return raw
+
+            def _decode_path(raw: str) -> str:
+                try:
+                    return raw.encode('utf-8').decode('unicode_escape')
+                except Exception:
+                    return raw
+
+            # Prefer the deepest/most-specific ContextPath assignment in the
+            # logic file (many scripts set a board-level path first, then the
+            # final device path used for register operations).
+            matches = list(re.finditer(r'\bContextPath\s*=\s*(["\\\'])(.+?)\1', src))
+            candidates = [_decode_path(m.group(2)).strip() for m in matches if m.group(2).strip()]
+            if candidates:
+                candidates.sort(key=lambda p: (p.count('\\'), len(p)))
+                return candidates[-1]
+
+            # Fallback: infer from NavigateToPath("Root::...") if present.
+            nav_matches = list(re.finditer(r'\bNavigateToPath\s*\(\s*(["\\\'])(Root::.+?)\1\s*\)', src))
+            if nav_matches:
+                nav = nav_matches[-1].group(2).strip()
+                if nav.startswith('Root::'):
+                    tail = nav[len('Root::'):]
+                    return '\\' + tail.replace('.', '\\')
+            return ''
         except Exception:
             return ''
 
@@ -1107,6 +1122,16 @@ class RecordingMixin:
                         return int(sval)
                 return int(raw_val)
 
+            def _ace_read_register(addr_int: int) -> int:
+                """Read one ACE register, trying common address formats."""
+                last_err = None
+                for token in (str(addr_int), f'0x{addr_int:X}', f'{addr_int:X}'):
+                    try:
+                        return _parse_register_value(client.ReadRegister(token))
+                    except Exception as e:
+                        last_err = e
+                raise last_err if last_err is not None else RuntimeError('ReadRegister failed')
+
             while running_flag():
                 try:
                     nowts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -1117,7 +1142,7 @@ class RecordingMixin:
                             if using_custom_backend:
                                 val = int(custom_read(client, int(addr)))
                             else:
-                                val = _parse_register_value(client.ReadRegister(str(int(addr))))
+                                val = _ace_read_register(int(addr))
                         except Exception as err:
                             val = f'ERR:{err}'
                         values.append(val)
