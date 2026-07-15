@@ -101,36 +101,12 @@ Local/per-machine files (`ssh_settings.json`, `pi_run_logs/`) are git-ignored.
 Future improvements
 -------------------
 
-The Pi path is intended to grow into the primary bringup **and** in-situ register-monitoring backend for parts that don't use ACE. Planned work:
+The Pi path is intended to grow into the primary bringup **and** in-situ register-monitoring backend for parts that don't use ACE. In brief:
 
-### Per-part bringup + readback (one codebase, two actions)
+- **Per-part tool, two actions** — one Pi-side binary per part with `config` (one-time bringup) and `readback` (non-destructive, timestamped register dump) sub-commands.
+- **One Excel file** — route Pi register reads into the existing `register reads` sheet (baseline + SEU highlight + live monitor) via the recorder's pluggable `open_register_client()` / `read_register()` backend hook, alongside supply and spectrum reads.
+- **Higher throughput than ACE** — batch the read on the Pi (persistent SPI daemon, bulk dump per sweep, optional on-device baseline diff that returns only SEU events) so large register sets sweep far faster than ACE's per-register round trips.
 
-- Each part gets a single Pi-side tool (e.g. `<part>_tool`) with sub-commands rather than separate scripts:
-  - `config` — write the init/bringup sequence (one-time).
-  - `readback` — pure, **non-destructive** SPI reads that produce a timestamped register dump. Kept separate so a readback pass never re-writes (and thus masks) radiation-flipped bits.
-- The GUI already supports this: the config's `pi_script` drives bringup, and the same binary can be pointed at `readback` for monitoring.
-
-### Register readback into the existing single Excel file
-
-The goal is for **register reads, supply reads, and spectrum reads to all land in one workbook**, exactly like the current ACE flow. The register recorder is already backend-pluggable — a part's `program_logic_path` module can define:
-
-```python
-def open_register_client():          # open the Pi/SPI session once per run
-    ...
-def read_register(client, addr):     # return the register value as an int
-    ...
-```
-
-Providing those two functions routes the Pi register data into the same `register reads` sheet, with the same EXPECTED baseline row, red-highlight-on-mismatch (SEU/SEFI catcher), and live Register Monitor as ACE — no new logging structure.
-
-### Higher-throughput readback than ACE
-
-For large register sets at high sweep rates, the key is to **batch the read on the Pi** instead of doing one round-trip per register:
-
-- **Persistent Pi SPI daemon** — keep `/dev/spidev` open and answer read requests over a socket, so repeated reads are microsecond-class instead of paying a process-spawn/SSH cost each time.
-- **Bulk dump per sweep** — the Pi reads the whole register set in one on-device C loop and ships the snapshot back once; a small `read_registers(client, addrs)` batch hook in the recorder lets the GUI do one call per sweep instead of N. This turns "N round trips" into "1 round trip + N local SPI reads" and is where the large speed-up over ACE comes from.
-- **On-device baseline diff (SEU events only)** — the daemon can compare each sweep against a stored baseline on the Pi and send back only the *changes* (address, old, new, timestamp), enabling very high-rate on-device detection while keeping the link and Excel file light.
-
-Net effect: the Pi can dump a large register map at a higher frequency than ACE — decisively so once the reads are batched on-device — which is what makes it attractive for catching and timestamping single-event upsets during irradiation.
+See [ai_context/pi_register_readback.md](ai_context/pi_register_readback.md) for the full design and rationale.
 
 
