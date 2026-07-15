@@ -255,6 +255,12 @@ class ConfigMixin:
             'notes': notes
         }
         try:
+            pi_spec = getattr(self, '_pi_config_spec', None)
+            if isinstance(pi_spec, dict) and pi_spec.get('cmd'):
+                payload['pi_script'] = pi_spec
+        except Exception:
+            pass
+        try:
             with open(path, 'w') as f:
                 json.dump(payload, f, indent=2)
             self.statusBar().showMessage(f'Saved config to {path}', 4000)
@@ -334,6 +340,12 @@ class ConfigMixin:
                 self.register_read_array = content.get('register_read_array', [])
             except Exception:
                 self.register_read_array = []
+            # Bind any Raspberry Pi command declared in the config
+            try:
+                if hasattr(self, '_apply_config_pi_script'):
+                    self._apply_config_pi_script(content.get('pi_script'))
+            except Exception:
+                pass
             try:
                 notes_data = content.get('notes', {})
                 has_saved_notes = notes_data and any(

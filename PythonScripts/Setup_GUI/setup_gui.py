@@ -93,6 +93,7 @@ from notes_manager import NotesMixin
 from power_manager import PowerMixin
 from programming_manager import ProgrammingMixin
 from instrument_manager import InstrumentMixin
+from ssh_manager import SshMixin
 
 
 def _ensure_qt_plugin_path() -> None:
@@ -118,10 +119,16 @@ class MainWindow(
     PowerMixin,
     ProgrammingMixin,
     InstrumentMixin,
+    SshMixin,
     QtWidgets.QMainWindow,
 ):
     # Thread-safe log signal
     log_signal = QtCore.pyqtSignal(str)
+    # Thread-safe SSH result signals (worker threads have no Qt event loop, so
+    # QTimer.singleShot cannot be used to marshal back to the GUI thread).
+    ssh_connect_result = QtCore.pyqtSignal(object, object, object)  # token, client, err
+    ssh_scripts_result = QtCore.pyqtSignal(list, str, str)          # files, dir, err
+    ssh_run_active_sig = QtCore.pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -221,6 +228,22 @@ class MainWindow(
         self._logic_thread = None
         self._logic_poll_timer = None
         self._logic_abort = False
+        # Raspberry Pi SSH state
+        self._ssh_client = None
+        self._ssh_run_thread = None
+        self._ssh_run_channel = None
+        self._pi_config_spec = None
+        self._ssh_connecting = False
+        self._ssh_connect_token = 0
+        self._ssh_pending_client = None
+        self._ssh_last_timeout = 10
+        # Route SSH worker-thread results to GUI-thread slots via queued signals
+        try:
+            self.ssh_connect_result.connect(self._ssh_finish_connect)
+            self.ssh_scripts_result.connect(self._ssh_populate_scripts)
+            self.ssh_run_active_sig.connect(self._ssh_set_run_active)
+        except Exception:
+            pass
         # aliasing for portable configs
         self.alias_dir = os.path.join(os.path.dirname(__file__), 'bench alias')
         os.makedirs(self.alias_dir, exist_ok=True)
@@ -352,6 +375,84 @@ class MainWindow(
         self.configure_part_btn.clicked.connect(self.on_configure_part_clicked)
         cfg_row.addWidget(self.configure_part_btn)
         prog_layout.addLayout(cfg_row)
+
+        # --- Raspberry Pi (SSH) programming ---
+        _ssh_cfg = self._load_ssh_settings()
+        ssh_group = QtWidgets.QGroupBox('Raspberry Pi (SSH)')
+        ssh_vbox = QtWidgets.QVBoxLayout(ssh_group)
+
+        # Connection row: host / user / password / port / connect
+        ssh_conn_row = QtWidgets.QHBoxLayout()
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Host:'))
+        self.ssh_host_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('host', '')))
+        self.ssh_host_edit.setMinimumWidth(240)
+        self.ssh_host_edit.setToolTip('Pi hostname or IP (IPv6 link-local incl. %zone is supported)')
+        ssh_conn_row.addWidget(self.ssh_host_edit, 1)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('User:'))
+        self.ssh_user_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('user', '')))
+        self.ssh_user_edit.setMaximumWidth(120)
+        ssh_conn_row.addWidget(self.ssh_user_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Password:'))
+        self.ssh_pass_edit = QtWidgets.QLineEdit()
+        self.ssh_pass_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.ssh_pass_edit.setMaximumWidth(120)
+        self.ssh_pass_edit.setToolTip('Not saved to disk')
+        ssh_conn_row.addWidget(self.ssh_pass_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Port:'))
+        self.ssh_port_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('port', 22)))
+        self.ssh_port_edit.setMaximumWidth(60)
+        ssh_conn_row.addWidget(self.ssh_port_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Timeout(s):'))
+        self.ssh_timeout_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('timeout', 10)))
+        self.ssh_timeout_edit.setMaximumWidth(50)
+        self.ssh_timeout_edit.setToolTip('Abort the connection attempt after this many seconds (2\u2013120)')
+        ssh_conn_row.addWidget(self.ssh_timeout_edit)
+        self.ssh_connect_btn = QtWidgets.QPushButton('Connect')
+        self.ssh_connect_btn.clicked.connect(self.on_ssh_connect_clicked)
+        ssh_conn_row.addWidget(self.ssh_connect_btn)
+        self.ssh_status_label = QtWidgets.QLabel('Status: Not connected')
+        self.ssh_status_label.setStyleSheet('color: red; font-weight: 600;')
+        ssh_conn_row.addWidget(self.ssh_status_label)
+        ssh_vbox.addLayout(ssh_conn_row)
+
+        # Script selection row: remote dir / script combo / refresh / run
+        ssh_script_row = QtWidgets.QHBoxLayout()
+        ssh_script_row.addWidget(QtWidgets.QLabel('Script dir:'))
+        self.ssh_scriptdir_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('script_dir', '~/pi_scripts')))
+        self.ssh_scriptdir_edit.setMinimumWidth(180)
+        self.ssh_scriptdir_edit.setToolTip('Directory on the Pi that holds the programming scripts')
+        ssh_script_row.addWidget(self.ssh_scriptdir_edit, 1)
+        ssh_script_row.addWidget(QtWidgets.QLabel('Script:'))
+        self.pi_script_combo = QtWidgets.QComboBox()
+        self.pi_script_combo.setMinimumWidth(220)
+        self.pi_script_combo.addItem('(Select a script)', '')
+        self.pi_script_combo.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_script_combo, 1)
+        self.pi_script_refresh_btn = QtWidgets.QPushButton('Refresh')
+        self.pi_script_refresh_btn.clicked.connect(self._refresh_pi_scripts)
+        self.pi_script_refresh_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_script_refresh_btn)
+        ssh_script_row.addWidget(QtWidgets.QLabel('Args:'))
+        self.ssh_args_edit = QtWidgets.QLineEdit()
+        self.ssh_args_edit.setMaximumWidth(140)
+        self.ssh_args_edit.setToolTip('Optional arguments passed to the script/binary (e.g. "0 100000000")')
+        ssh_script_row.addWidget(self.ssh_args_edit)
+        self.ssh_sudo_checkbox = QtWidgets.QCheckBox('sudo')
+        self.ssh_sudo_checkbox.setChecked(bool(_ssh_cfg.get('use_sudo', False)))
+        self.ssh_sudo_checkbox.setToolTip('Run the selected script with sudo -n (passwordless sudo)')
+        ssh_script_row.addWidget(self.ssh_sudo_checkbox)
+        self.pi_run_btn = QtWidgets.QPushButton('Run Script')
+        self.pi_run_btn.clicked.connect(self.on_pi_run_script_clicked)
+        self.pi_run_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_run_btn)
+        self.pi_abort_btn = QtWidgets.QPushButton('Abort')
+        self.pi_abort_btn.setStyleSheet('background-color: #FF5722; color: white;')
+        self.pi_abort_btn.clicked.connect(self.on_pi_abort_script_clicked)
+        self.pi_abort_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_abort_btn)
+        ssh_vbox.addLayout(ssh_script_row)
+
+        prog_layout.addWidget(ssh_group)
 
         # Search for new programmings row
         search_row = QtWidgets.QHBoxLayout()
@@ -584,6 +685,11 @@ class MainWindow(
         # Ensure all background recordings are stopped and workbook is saved before exit
         try:
             self._stop_all_recordings()
+        except Exception:
+            pass
+        # Close any open Raspberry Pi SSH connection
+        try:
+            self._ssh_disconnect()
         except Exception:
             pass
         # Turn off all instrument outputs/inputs before disconnecting so nothing

@@ -73,6 +73,15 @@
   "use_sequence": true,
   "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADF4382.py",
   "register_read_array": [],
+  "pi_script": {
+    "label": "AD9082 NCO test",
+    "dir": "~/AD9082_API-Rel1.7.0/src/ad9082_app/platform/raspi",
+    "build": "make all",
+    "cmd": "./build/nco_test",
+    "args": "0 100000000",
+    "sudo": true,
+    "reg_log": "nco_test.log"
+  },
   "notes": {
     "connections": "",
     "sources": "",
