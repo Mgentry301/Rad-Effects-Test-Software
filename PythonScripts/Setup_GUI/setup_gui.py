@@ -15,6 +15,71 @@ import sys
 import os
 import datetime
 
+
+# Keep references to os.add_dll_directory handles for the process lifetime so
+# the added VISA directories are not removed from the DLL search path on GC.
+_VISA_DLL_DIR_HANDLES = []
+
+
+def _ensure_visa_dll_path() -> None:
+    """Make the Keysight/IVI VISA implementation loadable from Python.
+
+    On Python 3.8+ the default DLL search path is restricted, so the
+    System32 ``visa32.dll`` cannot find the vendor VISA plug-ins that it
+    loads lazily inside ``viOpenDefaultRM``. Without this, pyvisa fails with
+    ``VI_ERROR_LIBRARY_NFOUND`` even though the IO Libraries are installed.
+    Adding the vendor ``bin`` folders to the DLL search path fixes it.
+
+    This must run BEFORE pyvisa first loads the VISA DLL, so it is called at
+    module import time (before the pyvisa-importing modules below). The
+    ``os.add_dll_directory`` handles are kept alive in a module-level list,
+    otherwise the directories are removed from the search path on GC.
+    """
+    if _VISA_DLL_DIR_HANDLES:
+        return
+    candidate_dirs = [
+        r'C:\Program Files\Keysight\IO Libraries Suite\bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\Bin',
+        r'C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Bin',
+        r'C:\Program Files\IVI Foundation\VISA\Win64\ktvisa\ktbin',
+    ]
+    for d in candidate_dirs:
+        if os.path.isdir(d):
+            try:
+                _VISA_DLL_DIR_HANDLES.append(os.add_dll_directory(d))
+            except (OSError, AttributeError):
+                pass
+            if d not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = d + os.pathsep + os.environ.get('PATH', '')
+
+
+# Run immediately, before any module that imports/loads pyvisa is imported.
+_ensure_visa_dll_path()
+
+
+def _warm_up_visa() -> None:
+    """Load the VISA library once, before PyQt5 is imported.
+
+    Importing PyQt5 alters the process DLL search behaviour so that, on the
+    first ``viOpenDefaultRM`` call, ``visa32.dll`` can no longer locate the
+    vendor plug-ins we added via ``os.add_dll_directory`` -- and that failure
+    is cached for the lifetime of the process, so adding the directories again
+    cannot recover it. Creating a throwaway ``ResourceManager`` here, while the
+    DLL search path is still clean, loads and caches the VISA library so all
+    later ``ResourceManager()`` calls (including after Qt is imported) succeed.
+    """
+    try:
+        import pyvisa
+        pyvisa.ResourceManager()
+    except Exception:
+        # No VISA backend / no IO Libraries installed: scanning will report
+        # this later with a user-facing message. Don't block GUI startup.
+        pass
+
+
+# Must run BEFORE the PyQt5 import below.
+_warm_up_visa()
+
 from PyQt5 import QtWidgets, QtCore
 
 from Support_Scrips.power_sequence_builder import PowerSequenceBuilder
@@ -28,6 +93,7 @@ from notes_manager import NotesMixin
 from power_manager import PowerMixin
 from programming_manager import ProgrammingMixin
 from instrument_manager import InstrumentMixin
+from ssh_manager import SshMixin
 
 
 def _ensure_qt_plugin_path() -> None:
@@ -53,10 +119,16 @@ class MainWindow(
     PowerMixin,
     ProgrammingMixin,
     InstrumentMixin,
+    SshMixin,
     QtWidgets.QMainWindow,
 ):
     # Thread-safe log signal
     log_signal = QtCore.pyqtSignal(str)
+    # Thread-safe SSH result signals (worker threads have no Qt event loop, so
+    # QTimer.singleShot cannot be used to marshal back to the GUI thread).
+    ssh_connect_result = QtCore.pyqtSignal(object, object, object)  # token, client, err
+    ssh_scripts_result = QtCore.pyqtSignal(list, str, str)          # files, dir, err
+    ssh_run_active_sig = QtCore.pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
@@ -156,6 +228,22 @@ class MainWindow(
         self._logic_thread = None
         self._logic_poll_timer = None
         self._logic_abort = False
+        # Raspberry Pi SSH state
+        self._ssh_client = None
+        self._ssh_run_thread = None
+        self._ssh_run_channel = None
+        self._pi_config_spec = None
+        self._ssh_connecting = False
+        self._ssh_connect_token = 0
+        self._ssh_pending_client = None
+        self._ssh_last_timeout = 10
+        # Route SSH worker-thread results to GUI-thread slots via queued signals
+        try:
+            self.ssh_connect_result.connect(self._ssh_finish_connect)
+            self.ssh_scripts_result.connect(self._ssh_populate_scripts)
+            self.ssh_run_active_sig.connect(self._ssh_set_run_active)
+        except Exception:
+            pass
         # aliasing for portable configs
         self.alias_dir = os.path.join(os.path.dirname(__file__), 'bench alias')
         os.makedirs(self.alias_dir, exist_ok=True)
@@ -245,7 +333,8 @@ class MainWindow(
         # Power sequence builder (wrapper)
         self.power_seq_builder = PowerSequenceBuilder(
             parent=self,
-            get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())]
+            get_instruments_callback=lambda: [self.tabs.tabText(i) for i in range(self.tabs.count())],
+            get_channels_callback=self._seq_get_instrument_channels
         )
         test_layout.addWidget(self.power_seq_builder)
 
@@ -286,6 +375,84 @@ class MainWindow(
         self.configure_part_btn.clicked.connect(self.on_configure_part_clicked)
         cfg_row.addWidget(self.configure_part_btn)
         prog_layout.addLayout(cfg_row)
+
+        # --- Raspberry Pi (SSH) programming ---
+        _ssh_cfg = self._load_ssh_settings()
+        ssh_group = QtWidgets.QGroupBox('Raspberry Pi (SSH)')
+        ssh_vbox = QtWidgets.QVBoxLayout(ssh_group)
+
+        # Connection row: host / user / password / port / connect
+        ssh_conn_row = QtWidgets.QHBoxLayout()
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Host:'))
+        self.ssh_host_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('host', '')))
+        self.ssh_host_edit.setMinimumWidth(240)
+        self.ssh_host_edit.setToolTip('Pi hostname or IP (IPv6 link-local incl. %zone is supported)')
+        ssh_conn_row.addWidget(self.ssh_host_edit, 1)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('User:'))
+        self.ssh_user_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('user', '')))
+        self.ssh_user_edit.setMaximumWidth(120)
+        ssh_conn_row.addWidget(self.ssh_user_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Password:'))
+        self.ssh_pass_edit = QtWidgets.QLineEdit()
+        self.ssh_pass_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.ssh_pass_edit.setMaximumWidth(120)
+        self.ssh_pass_edit.setToolTip('Not saved to disk')
+        ssh_conn_row.addWidget(self.ssh_pass_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Port:'))
+        self.ssh_port_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('port', 22)))
+        self.ssh_port_edit.setMaximumWidth(60)
+        ssh_conn_row.addWidget(self.ssh_port_edit)
+        ssh_conn_row.addWidget(QtWidgets.QLabel('Timeout(s):'))
+        self.ssh_timeout_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('timeout', 10)))
+        self.ssh_timeout_edit.setMaximumWidth(50)
+        self.ssh_timeout_edit.setToolTip('Abort the connection attempt after this many seconds (2\u2013120)')
+        ssh_conn_row.addWidget(self.ssh_timeout_edit)
+        self.ssh_connect_btn = QtWidgets.QPushButton('Connect')
+        self.ssh_connect_btn.clicked.connect(self.on_ssh_connect_clicked)
+        ssh_conn_row.addWidget(self.ssh_connect_btn)
+        self.ssh_status_label = QtWidgets.QLabel('Status: Not connected')
+        self.ssh_status_label.setStyleSheet('color: red; font-weight: 600;')
+        ssh_conn_row.addWidget(self.ssh_status_label)
+        ssh_vbox.addLayout(ssh_conn_row)
+
+        # Script selection row: remote dir / script combo / refresh / run
+        ssh_script_row = QtWidgets.QHBoxLayout()
+        ssh_script_row.addWidget(QtWidgets.QLabel('Script dir:'))
+        self.ssh_scriptdir_edit = QtWidgets.QLineEdit(str(_ssh_cfg.get('script_dir', '~/pi_scripts')))
+        self.ssh_scriptdir_edit.setMinimumWidth(180)
+        self.ssh_scriptdir_edit.setToolTip('Directory on the Pi that holds the programming scripts')
+        ssh_script_row.addWidget(self.ssh_scriptdir_edit, 1)
+        ssh_script_row.addWidget(QtWidgets.QLabel('Script:'))
+        self.pi_script_combo = QtWidgets.QComboBox()
+        self.pi_script_combo.setMinimumWidth(220)
+        self.pi_script_combo.addItem('(Select a script)', '')
+        self.pi_script_combo.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_script_combo, 1)
+        self.pi_script_refresh_btn = QtWidgets.QPushButton('Refresh')
+        self.pi_script_refresh_btn.clicked.connect(self._refresh_pi_scripts)
+        self.pi_script_refresh_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_script_refresh_btn)
+        ssh_script_row.addWidget(QtWidgets.QLabel('Args:'))
+        self.ssh_args_edit = QtWidgets.QLineEdit()
+        self.ssh_args_edit.setMaximumWidth(140)
+        self.ssh_args_edit.setToolTip('Optional arguments passed to the script/binary (e.g. "0 100000000")')
+        ssh_script_row.addWidget(self.ssh_args_edit)
+        self.ssh_sudo_checkbox = QtWidgets.QCheckBox('sudo')
+        self.ssh_sudo_checkbox.setChecked(bool(_ssh_cfg.get('use_sudo', False)))
+        self.ssh_sudo_checkbox.setToolTip('Run the selected script with sudo -n (passwordless sudo)')
+        ssh_script_row.addWidget(self.ssh_sudo_checkbox)
+        self.pi_run_btn = QtWidgets.QPushButton('Run Script')
+        self.pi_run_btn.clicked.connect(self.on_pi_run_script_clicked)
+        self.pi_run_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_run_btn)
+        self.pi_abort_btn = QtWidgets.QPushButton('Abort')
+        self.pi_abort_btn.setStyleSheet('background-color: #FF5722; color: white;')
+        self.pi_abort_btn.clicked.connect(self.on_pi_abort_script_clicked)
+        self.pi_abort_btn.setEnabled(False)
+        ssh_script_row.addWidget(self.pi_abort_btn)
+        ssh_vbox.addLayout(ssh_script_row)
+
+        prog_layout.addWidget(ssh_group)
 
         # Search for new programmings row
         search_row = QtWidgets.QHBoxLayout()
@@ -359,6 +526,18 @@ class MainWindow(
         # Start disabled until primed
         self.record_btn.setEnabled(False)
         record_row.addWidget(self.record_btn)
+        # Beam state toggle. Logged as the 'beamON' column in the supply
+        # recorder (0 = off, 1 = on). Stays visible/usable during recording.
+        self.beam_on = 0
+        self.beam_toggle_btn = QtWidgets.QPushButton('Beam OFF')
+        self.beam_toggle_btn.setCheckable(True)
+        self.beam_toggle_btn.setChecked(False)
+        self.beam_toggle_btn.setToolTip(
+            'Toggle beam state recorded in the supply CSV (beamON column). '
+            'Press to flip between 0 and 1 while recording.')
+        self.beam_toggle_btn.clicked.connect(self.toggle_beam_on)
+        self._update_beam_toggle_btn(False)
+        record_row.addWidget(self.beam_toggle_btn)
         self.supply_record_toggle = QtWidgets.QCheckBox('Supply')
         self.supply_record_toggle.setChecked(True)
         record_row.addWidget(self.supply_record_toggle)
@@ -446,6 +625,28 @@ class MainWindow(
     def _ts(self):
         return datetime.datetime.now().strftime('%H:%M:%S')
 
+    def _update_beam_toggle_btn(self, on: bool):
+        """Reflect the beam state on the toggle button."""
+        if on:
+            self.beam_toggle_btn.setText('Beam ON')
+            self.beam_toggle_btn.setStyleSheet(
+                'background-color: #4CAF50; color: white; font-weight: bold;')
+        else:
+            self.beam_toggle_btn.setText('Beam OFF')
+            self.beam_toggle_btn.setStyleSheet(
+                'background-color: #9E9E9E; color: white; font-weight: bold;')
+
+    def toggle_beam_on(self):
+        """Flip the logged beam state between 0 and 1 (recorded as beamON)."""
+        self.beam_on = 0 if getattr(self, 'beam_on', 0) else 1
+        on = bool(self.beam_on)
+        try:
+            self.beam_toggle_btn.setChecked(on)
+        except Exception:
+            pass
+        self._update_beam_toggle_btn(on)
+        self._log(f'Beam {"ON" if on else "OFF"} (beamON={self.beam_on})')
+
     def _log(self, msg: str):
         # Emit through Qt signal to ensure GUI-thread-safe appending
         try:
@@ -486,15 +687,15 @@ class MainWindow(
             self._stop_all_recordings()
         except Exception:
             pass
-        # Leave instrument outputs in their last commanded state on
-        # close so a separate tool (CLI debug, another GUI session) can
-        # use the bench without re-powering. Use the "Power Off All"
-        # button explicitly when you want everything de-energized.
-        # Set env var POWER_OFF_ON_CLOSE=1 to opt back into auto-off.
-        import os as _os
-        _auto_off = _os.environ.get('POWER_OFF_ON_CLOSE', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+        # Close any open Raspberry Pi SSH connection
         try:
-            if _auto_off and hasattr(self, 'power_off_all'):
+            self._ssh_disconnect()
+        except Exception:
+            pass
+        # Turn off all instrument outputs/inputs before disconnecting so nothing
+        # is left energized after the app exits.
+        try:
+            if hasattr(self, 'power_off_all'):
                 self.power_off_all()
                 try:
                     QtWidgets.QApplication.processEvents()
@@ -518,6 +719,7 @@ if __name__ == '__main__':
     from PyQt5 import QtWidgets
     try:
         _ensure_qt_plugin_path()
+        _ensure_visa_dll_path()
         app = QtWidgets.QApplication(sys.argv)
         win = MainWindow()
         win.show()

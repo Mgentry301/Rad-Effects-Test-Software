@@ -89,10 +89,17 @@ class SupplyRecorder:
             for idx, func in enumerate(self.get_readings_funcs):
                 v, c = func()
                 name = self.panel_names[idx]
+                labels = getattr(self.panels[idx], 'channel_labels', None)
                 for i in range(len(v)):
-                    v_headers.append(f"{name} V{i+1}")
+                    if labels and i < len(labels):
+                        v_headers.append(f"{name} {labels[i]} V")
+                    else:
+                        v_headers.append(f"{name} V{i+1}")
                 for i in range(len(c)):
-                    i_headers.append(f"{name} I{i+1}")
+                    if labels and i < len(labels):
+                        i_headers.append(f"{name} {labels[i]} I")
+                    else:
+                        i_headers.append(f"{name} I{i+1}")
             ws.append(header + v_headers + i_headers)
         for row in self.buffer:
             ws.append(row)

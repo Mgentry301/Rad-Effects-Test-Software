@@ -1,0 +1,91 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 1",
+      "name": "PS2",
+      "channels": {
+        "1": {
+          "voltage": "1.8",
+          "current": "1.0",
+          "output": false,
+          "name": "VDD1P8"
+        },
+        "2": {
+          "voltage": "1.1",
+          "current": "6",
+          "output": false,
+          "name": "VDD1D"
+        },
+        "3": {
+          "voltage": "1.0",
+          "current": "3.0",
+          "output": false,
+          "name": "VDD1C"
+        }
+      }
+    },
+    {
+      "type": "Hittite Sig Gen",
+      "resource": "alias:Hittite 0",
+      "name": "Hittite 0",
+      "settings": {
+        "frequency": "5.89824",
+        "freq_unit": "GHz",
+        "power": "6",
+        "output": false
+      }
+    },
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 2",
+      "name": "PS1",
+      "channels": {
+        "1": {
+          "voltage": "2.0",
+          "current": "1.0",
+          "output": false,
+          "name": "VDD2"
+        },
+        "2": {
+          "voltage": "1.0",
+          "current": "6",
+          "output": false,
+          "name": "VDD1B"
+        },
+        "3": {
+          "voltage": "1.0",
+          "current": "1.5",
+          "output": false,
+          "name": "VDD1A"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: PS2 Channel 2",
+    "Delay: 0.1 s",
+    "KeithleyChannel: PS2 Channel 1",
+    "Delay: 0.5 s",
+    "KeithleyChannel: PS1 Channel 1",
+    "Instrument: Hittite 0"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "c:\\Git\\Rad-Effects-Test-Software\\PythonScripts\\programming logics\\ADF4382.py",
+  "register_read_array": [],
+  "pi_script": {
+    "label": "AD9082 NCO test",
+    "dir": "~/AD9082_API-Rel1.7.0/src/ad9082_app/platform/raspi",
+    "build": "make all",
+    "cmd": "./build/nco_test",
+    "args": "0 100000000",
+    "sudo": true,
+    "reg_log": "nco_test.log"
+  },
+  "notes": {
+    "connections": "",
+    "sources": "",
+    "monitoring": "",
+    "general": "Config: AD9082 TID"
+  }
+}

@@ -40,14 +40,125 @@ class AliasMixin:
     def _apply_alias_profile_to_ui(self):
         try:
             aliases = sorted(self.alias_map.keys())
-            self.alias_list.clear()
-            if hasattr(self, 'alias_res_list'):
-                self.alias_res_list.clear()
-            for k in aliases:
-                self.alias_list.addItem(k)
+            # Suspend itemChanged while we rebuild the list programmatically
+            self._suspend_alias_rename = True
+            try:
+                self.alias_list.clear()
                 if hasattr(self, 'alias_res_list'):
-                    self.alias_res_list.addItem(self.alias_map.get(k, ''))
+                    self.alias_res_list.clear()
+                for k in aliases:
+                    item = QtWidgets.QListWidgetItem(k)
+                    # Store the current alias name so we can detect renames
+                    item.setData(QtCore.Qt.UserRole, k)
+                    item.setFlags(item.flags() | QtCore.Qt.ItemIsEditable)
+                    item.setToolTip('Double-click to rename this alias for this bench')
+                    self.alias_list.addItem(item)
+                    if hasattr(self, 'alias_res_list'):
+                        self.alias_res_list.addItem(self.alias_map.get(k, ''))
+            finally:
+                self._suspend_alias_rename = False
             self.alias_profile_name.setText(self.alias_profile or '')
+        except Exception:
+            pass
+
+    def _on_alias_item_renamed(self, item):
+        """Handle inline rename of an alias in the Settings tab.
+
+        Updates self.alias_map (preserving the VISA resource), persists to the
+        current profile, and updates the detected-instrument combo so the new
+        name appears immediately without a full VISA rescan.
+        """
+        if getattr(self, '_suspend_alias_rename', False):
+            return
+        try:
+            new_name = (item.text() or '').strip()
+            old_name = item.data(QtCore.Qt.UserRole)
+        except Exception:
+            return
+        if not old_name:
+            return
+        # No-op
+        if new_name == old_name:
+            return
+
+        # Validation: empty or duplicate -> revert
+        def _revert(msg=None):
+            self._suspend_alias_rename = True
+            try:
+                item.setText(old_name)
+            finally:
+                self._suspend_alias_rename = False
+            if msg:
+                try:
+                    QtWidgets.QMessageBox.warning(self, 'Rename failed', msg)
+                except Exception:
+                    pass
+
+        if not new_name:
+            _revert('Alias name cannot be empty.')
+            return
+        if new_name in (self.alias_map or {}) and new_name != old_name:
+            _revert(f'Alias "{new_name}" already exists in this profile.')
+            return
+
+        # Apply rename to alias_map (preserve order so the lists stay aligned)
+        try:
+            new_map = {}
+            for k, v in (self.alias_map or {}).items():
+                if k == old_name:
+                    new_map[new_name] = v
+                else:
+                    new_map[k] = v
+            self.alias_map = new_map
+        except Exception:
+            _revert('Internal error renaming alias.')
+            return
+
+        # Update the stored "current name" so future edits compare correctly
+        try:
+            item.setData(QtCore.Qt.UserRole, new_name)
+        except Exception:
+            pass
+
+        # Update detected_combo so the renamed alias re-appears in the
+        # "Detected" dropdown without a full VISA rescan.
+        try:
+            res = (self.alias_map or {}).get(new_name)
+            if res and hasattr(self, 'detected_combo'):
+                for i in range(self.detected_combo.count()):
+                    data = self.detected_combo.itemData(i)
+                    if isinstance(data, tuple) and len(data) >= 2 and data[0] == res:
+                        inst_type = data[1] if len(data) > 1 else ''
+                        self.detected_combo.setItemText(i, new_name)
+                        self.detected_combo.setItemData(i, (res, inst_type, new_name))
+                        break
+        except Exception:
+            pass
+
+        # Persist to the current profile (if one is loaded)
+        try:
+            if getattr(self, 'alias_profile', ''):
+                self._save_alias_profile(self.alias_profile)
+            else:
+                self.statusBar().showMessage(
+                    f'Renamed "{old_name}" -> "{new_name}" (no profile loaded — Save Profile to persist)', 5000)
+        except Exception:
+            pass
+
+        try:
+            self.statusBar().showMessage(f'Renamed alias "{old_name}" -> "{new_name}"', 4000)
+        except Exception:
+            pass
+
+    def _rename_selected_alias(self):
+        """Trigger inline edit on the currently selected alias item."""
+        try:
+            item = self.alias_list.currentItem()
+            if item is None:
+                QtWidgets.QMessageBox.information(self, 'No selection',
+                    'Select an alias on the left to rename, or double-click it.')
+                return
+            self.alias_list.editItem(item)
         except Exception:
             pass
 
@@ -434,12 +545,22 @@ class AliasMixin:
         prow.addWidget(del_btn)
         layout.addLayout(prow)
         # Alias mapping area
-        layout.addWidget(QtWidgets.QLabel('Drag instruments (right) to align with alias names (left):'))
+        layout.addWidget(QtWidgets.QLabel(
+            'Alias names (left, double-click to rename per-bench) — drag VISA resources (right) to align:'))
         lists_row = QtWidgets.QHBoxLayout()
         self.alias_list = QtWidgets.QListWidget()
-        self.alias_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        # Allow per-bench renaming of alias labels via inline edit.
+        self.alias_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.alias_list.setEditTriggers(
+            QtWidgets.QAbstractItemView.DoubleClicked
+            | QtWidgets.QAbstractItemView.EditKeyPressed
+            | QtWidgets.QAbstractItemView.SelectedClicked)
         self.alias_list.setDragEnabled(False)
         self.alias_list.setAcceptDrops(False)
+        try:
+            self.alias_list.itemChanged.connect(self._on_alias_item_renamed)
+        except Exception:
+            pass
         self.alias_res_list = QtWidgets.QListWidget()
         self.alias_res_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.alias_res_list.setDragEnabled(True)
@@ -479,7 +600,13 @@ class AliasMixin:
         suggest_btn = QtWidgets.QPushButton('Suggest Aliases')
         suggest_btn.setToolTip('Automatically generate alias names for all detected instruments')
         suggest_btn.clicked.connect(self._suggest_aliases_from_scan)
+        rename_btn = QtWidgets.QPushButton('Rename Selected Alias')
+        rename_btn.setToolTip('Rename the selected alias (or just double-click it). '
+                              'The new name is saved to the current bench profile and '
+                              'shown in the Detected dropdown.')
+        rename_btn.clicked.connect(self._rename_selected_alias)
         util_row.addWidget(suggest_btn)
+        util_row.addWidget(rename_btn)
         util_row.addStretch(1)
         layout.addLayout(util_row)
 

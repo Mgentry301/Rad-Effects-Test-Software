@@ -6,3 +6,6 @@ PythonScripts/Setup_GUI/setup_gui_backup.py
 
 # Dewesoft data files (often >100MB; use git LFS or store externally)
 *.dxd
+
+# Runtime log artifact
+log.log

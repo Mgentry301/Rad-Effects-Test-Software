@@ -1,0 +1,9 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local, per-machine SSH connection settings (may contain host/user, never commit)
+ssh_settings.json
+
+# Per-run device/register logs produced at runtime
+pi_run_logs/
