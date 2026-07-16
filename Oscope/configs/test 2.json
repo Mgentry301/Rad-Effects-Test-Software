@@ -1,0 +1,11 @@
+{
+  "scope_resource": "USB0::0x0957::0x17AC::MY55440180::INSTR",
+  "save_dir": "C:\\Users\\Public\\Documents\\Oscope Captures",
+  "trigger_level_v": 1.0,
+  "channel_center_v": 3.0,
+  "vertical_scale_v_per_div": 1.0,
+  "horizontal_scale_s_per_div": 0.0005,
+  "trigger_slope": "Falling",
+  "poll_interval_s": 0.25,
+  "opc_poll_timeout_ms": 500
+}

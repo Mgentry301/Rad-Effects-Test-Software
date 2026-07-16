@@ -1,0 +1,668 @@
+"""
+Keysight MSOX6004A triggered screenshot logger
+
+What it does:
+- Connects to a Keysight MSOX6004A oscilloscope through VISA.
+- Uses CH1 only.
+- Sets:
+    CH1 vertical scale      = 200 mV/div
+    CH1 vertical center     = 5.0 V
+    Trigger source          = CH1
+    Trigger level           = 5.1 V
+    Horizontal scale        = 200 ms/div
+    Acquisition mode        = single
+- Saves a screenshot every time the scope triggers and completes a single acquisition.
+- Stops when the user clicks the Stop button.
+
+Requirements:
+    pip install pyvisa
+
+You also need a VISA backend installed, typically:
+- Keysight IO Libraries Suite, or
+- NI-VISA
+
+Example VISA resource strings:
+    LAN:  "TCPIP0::192.168.1.100::inst0::INSTR"
+    USB:  "USB0::0x2A8D::0x900E::MYXXXXXXXX::0::INSTR"
+
+Update SCOPE_RESOURCE below before running.
+"""
+
+import os
+import json
+import queue
+import time
+import datetime as dt
+import threading
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+
+import pyvisa
+
+# ---------------------------------------------------------------------
+# User settings
+# ---------------------------------------------------------------------
+
+SCOPE_RESOURCE = "USB0::0x0957::0x17AC::MY55440180::INSTR"  # this is VISA for 4 channel scope
+SAVE_DIR = r"C:\Users\Public\Documents\Oscope Captures" # Directory where screenshots will be saved
+TRIGGER_LEVEL_V = 1.5
+CHANNEL_CENTER_V = 3.2
+VERTICAL_SCALE_V_PER_DIV = 0.5       # 1 V/div
+HORIZONTAL_SCALE_S_PER_DIV = 0.0002     # 2 ms/div
+DEFAULT_TRIGGER_SLOPE = "Rising"      # "Rising" or "Falling"
+
+# How often to poll the scope state while waiting for a trigger/acquisition.
+POLL_INTERVAL_S = 0.25
+OPC_POLL_TIMEOUT_MS = 500
+
+# ---------------------------------------------------------------------
+# VISA / SCPI helper functions
+# ---------------------------------------------------------------------
+
+def open_scope(resource: str):
+    rm = pyvisa.ResourceManager()
+    scope = rm.open_resource(resource)
+
+    # Long enough for normal commands, short enough so Stop remains responsive.
+    scope.timeout = 1000  # ms
+
+    # Keysight instruments usually use LF termination for ASCII commands.
+    scope.write_termination = "\n"
+    scope.read_termination = "\n"
+
+    # Clear any stale I/O state from a previous interrupted run.
+    try:
+        scope.clear()
+    except Exception:
+        pass
+
+    return rm, scope
+
+def write(scope, cmd: str):
+    """Write a SCPI command."""
+    scope.write(cmd)
+
+def query(scope, cmd: str) -> str:
+    """Query a SCPI command and strip whitespace."""
+    return scope.query(cmd).strip()
+
+def drain_errors(scope, max_errors=20):
+    """
+    Read the instrument error queue.
+    Returns a list of error strings.
+    """
+    errors = []
+    for _ in range(max_errors):
+        try:
+            err = query(scope, ":SYSTem:ERRor?")
+        except Exception as exc:
+            errors.append(f"Could not read error queue: {exc}")
+            break
+
+        errors.append(err)
+        if err.startswith("+0") or "No error" in err:
+            break
+
+    return errors
+
+def safe_write(scope, cmd: str):
+    """
+    Write a command but do not abort the whole setup if the specific command
+    is unsupported by a particular firmware/options combination.
+
+    Useful for commands like turning off digital pods on DSO/MSO variants.
+    """
+    try:
+        write(scope, cmd)
+        time.sleep(0.02)
+    except Exception:
+        pass
+
+def read_ieee4882_binblock(scope) -> bytes:
+    """
+    Read an IEEE 488.2 definite-length binary block from the scope.
+
+    Expected format:
+        #<N><length><payload>
+
+    Example:
+        #9000123456<123456 bytes of PNG data>
+    """
+    raw = scope.read_raw()
+
+    # Sometimes the first read may not contain the entire block.
+    # Keep appending until the declared payload length is reached.
+    if not raw.startswith(b"#"):
+        raise RuntimeError(f"Expected binary block starting with '#', got: {raw[:32]!r}")
+
+    n_digits = int(chr(raw[1]))
+    length_start = 2
+    length_end = length_start + n_digits
+    payload_length = int(raw[length_start:length_end].decode("ascii"))
+    payload_start = length_end
+
+    needed_total = payload_start + payload_length
+    while len(raw) < needed_total:
+        raw += scope.read_raw()
+
+    payload = raw[payload_start:needed_total]
+    return payload
+
+def capture_screenshot_png(scope) -> bytes:
+    """
+    Request the display image as a PNG.
+
+    This command is commonly supported on Keysight InfiniiVision scopes:
+        :DISPlay:DATA? PNG,COLor
+    """
+    old_timeout = scope.timeout
+    scope.timeout = 10000  # screenshot binary transfer can take longer
+
+    try:
+        scope.write(":DISPlay:DATA? PNG,COLor")
+        png_bytes = read_ieee4882_binblock(scope)
+    finally:
+        scope.timeout = old_timeout
+
+    return png_bytes
+
+def build_screenshot_path(save_dir: str, capture_index: int) -> str:
+    os.makedirs(save_dir, exist_ok=True)
+
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    filename = f"MSOX6004A_trigger_{capture_index:04d}_{timestamp}.png"
+    path = os.path.join(save_dir, filename)
+
+    return path
+
+def save_png_bytes(path: str, png: bytes):
+    with open(path, "wb") as f:
+        f.write(png)
+
+# ---------------------------------------------------------------------
+# Scope configuration
+# ---------------------------------------------------------------------
+
+def configure_scope(scope, settings):
+    """
+    Configure the MSOX6004A for the requested acquisition.
+    """
+    write(scope, "*CLS")
+
+    # Stop first so setup changes are clean.
+    write(scope, ":STOP")
+
+    # Display/use CH1 and CH2, but keep trigger source on CH1.
+    write(scope, ":CHANnel1:DISPlay ON")
+    write(scope, ":CHANnel2:DISPlay ON")
+    safe_write(scope, ":CHANnel3:DISPlay OFF")
+    safe_write(scope, ":CHANnel4:DISPlay OFF")
+
+    # If this is an MSO model, try turning off digital pods/buses.
+    # Ignore errors if command names/options differ.
+    safe_write(scope, ":POD1:DISPlay OFF")
+    safe_write(scope, ":POD2:DISPlay OFF")
+
+    # Some variants queue -241 "Hardware missing" for POD commands when
+    # digital hardware is not present. Consume those expected optional errors
+    # now so they do not show up as setup warnings later.
+    optional_errors = drain_errors(scope, max_errors=6)
+    for err in optional_errors:
+        if err.startswith("+0") or "No error" in err:
+            break
+        if not ("-241" in err and "Hardware missing" in err):
+            print("Optional setup warning:", err)
+
+    # CH1 vertical setup.
+    write(scope, f":CHANnel1:SCALe {settings['vertical_scale_v_per_div']}")
+    write(scope, f":CHANnel1:OFFSet {settings['channel_center_v']}")
+
+    # Horizontal setup: 200 ms/div.
+    write(scope, f":TIMebase:SCALe {settings['horizontal_scale_s_per_div']}")
+
+    # Trigger setup: edge trigger on CH1 at configured level/slope.
+    write(scope, ":TRIGger:MODE EDGE")
+    write(scope, ":TRIGger:EDGE:SOURce CHANnel1")
+    slope_map = {
+        "rising": "POSitive",
+        "falling": "NEGative",
+    }
+    slope_scpi = slope_map.get(str(settings["trigger_slope"]).strip().lower(), "POSitive")
+    write(scope, f":TRIGger:EDGE:SLOPe {slope_scpi}")
+
+    # Trigger level syntax has historically varied slightly by scope family.
+    # Try the common 6000 X-Series form first; fall back if needed.
+    try:
+        write(scope, f":TRIGger:LEVel CHANnel1,{settings['trigger_level_v']}")
+    except Exception:
+        write(scope, f":TRIGger:EDGE:LEVel {settings['trigger_level_v']}")
+
+    # Normal trigger mode prevents auto-triggered screenshots.
+    safe_write(scope, ":TRIGger:SWEep NORMal")
+
+    # Recommended display formatting for screenshots.
+    safe_write(scope, ":HARDcopy:INKSaver OFF")
+
+    # Wait for setup operations to finish.
+    write(scope, "*WAI")
+
+    errors = drain_errors(scope)
+    real_errors = [e for e in errors if not (e.startswith("+0") or "No error" in e)]
+    if real_errors:
+        print("Instrument reported setup warnings/errors:")
+        for e in real_errors:
+            print("  ", e)
+
+def arm_single(scope):
+    """
+    Arm the oscilloscope for one single acquisition.
+    """
+    write(scope, ":SINGle")
+
+def acquisition_complete(scope, stop_event, opc_poll_timeout_ms: int) -> bool:
+    """
+    Wait for a single acquisition to complete after :SINGle.
+
+    Using *OPC? is more robust across firmware variants than repeatedly
+    polling :TRIGger:STATus?, which can timeout or behave inconsistently.
+    """
+    old_timeout = scope.timeout
+
+    try:
+        while not stop_event.is_set():
+            try:
+                scope.timeout = opc_poll_timeout_ms
+                return query(scope, "*OPC?") == "1"
+            except pyvisa.errors.VisaIOError as exc:
+                if exc.error_code == pyvisa.constants.StatusCode.error_timeout:
+                    continue
+
+                last_error = getattr(acquisition_complete, "_last_error", None)
+                error_text = str(exc)
+                if error_text != last_error:
+                    acquisition_complete._last_error = error_text
+                    print(f"Single acquisition wait VISA error: {error_text}")
+                return False
+            except Exception as exc:
+                last_error = getattr(acquisition_complete, "_last_error", None)
+                error_text = str(exc)
+                if error_text != last_error:
+                    acquisition_complete._last_error = error_text
+                    print(f"Single acquisition wait failed: {error_text}")
+                return False
+
+        return False
+    finally:
+        scope.timeout = old_timeout
+
+# ---------------------------------------------------------------------
+# GUI-driven logging loop
+# ---------------------------------------------------------------------
+
+class ScopeLoggerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("MSOX6004A Triggered Screenshot Logger")
+        self.root.geometry("760x540")
+
+        self.stop_event = threading.Event()
+        self.worker = None
+        self.scope = None
+
+        self.status_var = tk.StringVar(value="Idle")
+        self.count_var = tk.StringVar(value="Screenshots saved: 0")
+        self.last_file_var = tk.StringVar(value="Last file: none")
+        self.scope_resource_var = tk.StringVar(value=SCOPE_RESOURCE)
+        self.save_dir_var = tk.StringVar(value=SAVE_DIR)
+        self.trigger_level_var = tk.StringVar(value=str(TRIGGER_LEVEL_V))
+        self.channel_center_var = tk.StringVar(value=str(CHANNEL_CENTER_V))
+        self.vertical_scale_var = tk.StringVar(value=str(VERTICAL_SCALE_V_PER_DIV))
+        self.horizontal_scale_var = tk.StringVar(value=str(HORIZONTAL_SCALE_S_PER_DIV))
+        self.trigger_slope_var = tk.StringVar(value=DEFAULT_TRIGGER_SLOPE)
+        self.poll_interval_var = tk.StringVar(value=str(POLL_INTERVAL_S))
+        self.opc_timeout_var = tk.StringVar(value=str(OPC_POLL_TIMEOUT_MS))
+        self.setting_controls = []
+
+        main = ttk.Frame(root, padding=16)
+        main.pack(fill="both", expand=True)
+
+        ttk.Label(
+            main,
+            text="Keysight MSOX6004A Triggered Screenshot Logger",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w")
+
+        settings_frame = ttk.LabelFrame(main, text="Run Settings", padding=10)
+        settings_frame.pack(fill="x", pady=(10, 0))
+
+        self._add_setting_row(settings_frame, "Scope resource", self.scope_resource_var, 0)
+        self._add_setting_row(settings_frame, "Save directory", self.save_dir_var, 1, add_browse=True)
+        self._add_setting_row(settings_frame, "Trigger level (V)", self.trigger_level_var, 2)
+        self._add_setting_row(settings_frame, "Channel offset (V)", self.channel_center_var, 3)
+        self._add_setting_row(settings_frame, "Vertical scale (V/div)", self.vertical_scale_var, 4)
+        self._add_setting_row(settings_frame, "Horizontal scale (s/div)", self.horizontal_scale_var, 5)
+        self._add_slope_row(settings_frame, 6)
+        self._add_setting_row(settings_frame, "Poll interval (s)", self.poll_interval_var, 7)
+        self._add_setting_row(settings_frame, "OPC poll timeout (ms)", self.opc_timeout_var, 8)
+
+        settings_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(main, textvariable=self.status_var).pack(anchor="w", pady=(12, 0))
+        ttk.Label(main, textvariable=self.count_var).pack(anchor="w", pady=(6, 0))
+        ttk.Label(main, textvariable=self.last_file_var, wraplength=520).pack(anchor="w", pady=(6, 0))
+
+        buttons = ttk.Frame(main)
+        buttons.pack(anchor="w", pady=(18, 0))
+
+        self.start_button = ttk.Button(buttons, text="Start", command=self.start)
+        self.start_button.pack(side="left")
+
+        self.save_preset_button = ttk.Button(buttons, text="Save Preset", command=self.save_preset)
+        self.save_preset_button.pack(side="left", padx=(8, 0))
+
+        self.load_preset_button = ttk.Button(buttons, text="Load Preset", command=self.load_preset)
+        self.load_preset_button.pack(side="left", padx=(8, 0))
+
+        self.setting_controls.extend([self.save_preset_button, self.load_preset_button])
+
+        self.stop_button = ttk.Button(buttons, text="Stop", command=self.stop, state="disabled")
+        self.stop_button.pack(side="left", padx=(8, 0))
+
+        self.quit_button = ttk.Button(buttons, text="Quit", command=self.quit_app)
+        self.quit_button.pack(side="left", padx=(8, 0))
+
+        self.root.protocol("WM_DELETE_WINDOW", self.quit_app)
+
+    def _add_setting_row(self, parent, label_text, variable, row, add_browse=False):
+        label = ttk.Label(parent, text=label_text)
+        label.grid(row=row, column=0, sticky="w", pady=3)
+
+        entry = ttk.Entry(parent, textvariable=variable)
+        entry.grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=3)
+
+        self.setting_controls.extend([label, entry])
+
+        if add_browse:
+            browse = ttk.Button(parent, text="Browse", command=self._browse_save_dir)
+            browse.grid(row=row, column=2, padx=(8, 0), pady=3)
+            self.setting_controls.append(browse)
+
+    def _add_slope_row(self, parent, row):
+        label = ttk.Label(parent, text="Trigger slope")
+        label.grid(row=row, column=0, sticky="w", pady=3)
+
+        combo = ttk.Combobox(
+            parent,
+            textvariable=self.trigger_slope_var,
+            values=("Rising", "Falling"),
+            state="readonly",
+        )
+        combo.grid(row=row, column=1, sticky="w", padx=(10, 0), pady=3)
+
+        self.setting_controls.extend([label, combo])
+
+    def _browse_save_dir(self):
+        selected_dir = filedialog.askdirectory(initialdir=self.save_dir_var.get() or os.getcwd())
+        if selected_dir:
+            self.save_dir_var.set(selected_dir)
+
+    def _build_settings_from_ui(self):
+        try:
+            settings = {
+                "scope_resource": self.scope_resource_var.get().strip(),
+                "save_dir": self.save_dir_var.get().strip(),
+                "trigger_level_v": float(self.trigger_level_var.get().strip()),
+                "channel_center_v": float(self.channel_center_var.get().strip()),
+                "vertical_scale_v_per_div": float(self.vertical_scale_var.get().strip()),
+                "horizontal_scale_s_per_div": float(self.horizontal_scale_var.get().strip()),
+                "trigger_slope": self.trigger_slope_var.get().strip() or DEFAULT_TRIGGER_SLOPE,
+                "poll_interval_s": float(self.poll_interval_var.get().strip()),
+                "opc_poll_timeout_ms": int(float(self.opc_timeout_var.get().strip())),
+            }
+        except ValueError as exc:
+            messagebox.showerror("Invalid Settings", f"One or more numeric settings are invalid.\n\n{exc}")
+            return None
+
+        if not settings["scope_resource"]:
+            messagebox.showerror("Invalid Settings", "Scope resource cannot be empty.")
+            return None
+
+        if not settings["save_dir"]:
+            messagebox.showerror("Invalid Settings", "Save directory cannot be empty.")
+            return None
+
+        if settings["poll_interval_s"] <= 0:
+            messagebox.showerror("Invalid Settings", "Poll interval must be greater than 0.")
+            return None
+
+        if settings["opc_poll_timeout_ms"] <= 0:
+            messagebox.showerror("Invalid Settings", "OPC poll timeout must be greater than 0 ms.")
+            return None
+
+        return settings
+
+    def _apply_settings_to_ui(self, settings):
+        self.scope_resource_var.set(str(settings.get("scope_resource", self.scope_resource_var.get())))
+        self.save_dir_var.set(str(settings.get("save_dir", self.save_dir_var.get())))
+        self.trigger_level_var.set(str(settings.get("trigger_level_v", self.trigger_level_var.get())))
+        self.channel_center_var.set(str(settings.get("channel_center_v", self.channel_center_var.get())))
+        self.vertical_scale_var.set(str(settings.get("vertical_scale_v_per_div", self.vertical_scale_var.get())))
+        self.horizontal_scale_var.set(str(settings.get("horizontal_scale_s_per_div", self.horizontal_scale_var.get())))
+
+        slope_value = str(settings.get("trigger_slope", self.trigger_slope_var.get() or DEFAULT_TRIGGER_SLOPE)).strip()
+        if slope_value.lower() == "falling":
+            self.trigger_slope_var.set("Falling")
+        else:
+            self.trigger_slope_var.set("Rising")
+
+        self.poll_interval_var.set(str(settings.get("poll_interval_s", self.poll_interval_var.get())))
+        self.opc_timeout_var.set(str(settings.get("opc_poll_timeout_ms", self.opc_timeout_var.get())))
+
+    def save_preset(self):
+        settings = self._build_settings_from_ui()
+        if settings is None:
+            return
+
+        preset_path = filedialog.asksaveasfilename(
+            title="Save Scope Preset",
+            defaultextension=".json",
+            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+            initialfile="scope_preset.json",
+        )
+        if not preset_path:
+            return
+
+        try:
+            with open(preset_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+        except Exception as exc:
+            messagebox.showerror("Preset Save Error", str(exc))
+            return
+
+        self.set_status(f"Preset saved: {preset_path}")
+
+    def load_preset(self):
+        preset_path = filedialog.askopenfilename(
+            title="Load Scope Preset",
+            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+        )
+        if not preset_path:
+            return
+
+        try:
+            with open(preset_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+        except Exception as exc:
+            messagebox.showerror("Preset Load Error", str(exc))
+            return
+
+        if not isinstance(loaded, dict):
+            messagebox.showerror("Preset Load Error", "Preset file must contain a JSON object.")
+            return
+
+        self._apply_settings_to_ui(loaded)
+
+        # Validate loaded values and normalize text fields to parsed values.
+        validated = self._build_settings_from_ui()
+        if validated is None:
+            return
+        self._apply_settings_to_ui(validated)
+
+        self.set_status(f"Preset loaded: {preset_path}")
+
+    def _set_settings_enabled(self, enabled: bool):
+        for widget in self.setting_controls:
+            widget.configure(state="normal" if enabled else "disabled")
+
+        # Keep combobox read-only when enabled.
+        if enabled:
+            for widget in self.setting_controls:
+                if isinstance(widget, ttk.Combobox):
+                    widget.configure(state="readonly")
+
+    def set_status(self, text):
+        self.root.after(0, self.status_var.set, text)
+
+    def set_count(self, count):
+        self.root.after(0, self.count_var.set, f"Screenshots saved: {count}")
+
+    def set_last_file(self, path):
+        self.root.after(0, self.last_file_var.set, f"Last file: {path}")
+
+    def start(self):
+        if self.worker and self.worker.is_alive():
+            return
+
+        settings = self._build_settings_from_ui()
+        if settings is None:
+            return
+
+        self.stop_event.clear()
+        self.start_button.config(state="disabled")
+        self.stop_button.config(state="normal")
+        self._set_settings_enabled(False)
+
+        self.worker = threading.Thread(target=self.run_logger, args=(settings,), daemon=True)
+        self.worker.start()
+
+    def stop(self):
+        self.stop_event.set()
+        self.set_status("Stopping...")
+
+    def quit_app(self):
+        self.stop_event.set()
+        self.root.destroy()
+
+    def run_logger(self, settings):
+        rm = None
+        scope = None
+        screenshot_count = 0
+        save_queue = queue.Queue()
+        save_stop_token = object()
+        save_error = {"message": None}
+
+        def save_worker():
+            while True:
+                item = save_queue.get()
+                if item is save_stop_token:
+                    break
+
+                path, png = item
+                try:
+                    save_png_bytes(path, png)
+                except Exception as exc:
+                    save_error["message"] = f"Failed to save screenshot: {exc}"
+                    break
+
+        save_thread = threading.Thread(target=save_worker, daemon=True)
+        save_thread.start()
+
+        try:
+            self.set_status("Opening VISA connection...")
+            rm, scope = open_scope(settings["scope_resource"])
+            self.scope = scope
+
+            idn = query(scope, "*IDN?")
+            self.set_status(f"Connected: {idn}")
+
+            self.set_status("Configuring oscilloscope...")
+            configure_scope(scope, settings)
+
+            os.makedirs(settings["save_dir"], exist_ok=True)
+
+            self.set_status("Arming single acquisition...")
+            arm_single(scope)
+
+            while not self.stop_event.is_set():
+                self.set_status("Waiting for trigger...")
+                if acquisition_complete(scope, self.stop_event, settings["opc_poll_timeout_ms"]):
+                    if self.stop_event.is_set():
+                        break
+
+                    screenshot_count += 1
+
+                    self.set_status(f"Triggered. Capturing screenshot #{screenshot_count}...")
+                    path = build_screenshot_path(settings["save_dir"], screenshot_count)
+                    png = capture_screenshot_png(scope)
+                    save_queue.put((path, png))
+
+                    if save_error["message"]:
+                        raise RuntimeError(save_error["message"])
+
+                    self.set_count(screenshot_count)
+                    self.set_last_file(path)
+
+                    if self.stop_event.is_set():
+                        break
+
+                    # Re-arm as soon as capture data has been queued for saving.
+                    self.set_status("Re-arming acquisition...")
+                    arm_single(scope)
+                else:
+                    if not self.stop_event.is_set():
+                        self.set_status("Trigger wait did not complete; re-arming...")
+                        arm_single(scope)
+                        time.sleep(settings["poll_interval_s"])
+
+            self.set_status("Stopped by user.")
+
+        except Exception as exc:
+            self.set_status("Error.")
+            error_text = str(exc)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror("Scope Logger Error", error_text)
+            )
+
+        finally:
+            try:
+                save_queue.put(save_stop_token)
+                save_thread.join(timeout=5)
+            except BaseException:
+                pass
+
+            try:
+                if scope is not None:
+                    safe_write(scope, ":ABORt")
+                    safe_write(scope, ":STOP")
+                    safe_write(scope, "*CLS")
+                    scope.close()
+            except BaseException:
+                pass
+
+            try:
+                if rm is not None:
+                    rm.close()
+            except BaseException:
+                pass
+
+            self.scope = None
+
+            self.root.after(0, self.start_button.config, {"state": "normal"})
+            self.root.after(0, self.stop_button.config, {"state": "disabled"})
+            self.root.after(0, self._set_settings_enabled, True)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ScopeLoggerApp(root)
+    root.mainloop()
