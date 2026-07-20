@@ -835,3 +835,7 @@ class ConfigMixin:
             self._last_loaded_config_path = path
         except Exception:
             pass
+        try:
+            self._auto_select_recording_toggles()
+        except Exception:
+            pass

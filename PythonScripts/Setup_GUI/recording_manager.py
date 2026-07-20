@@ -41,6 +41,46 @@ class RecordingMixin:
             pass
         return []
 
+    def _auto_select_recording_toggles(self):
+        """Auto-select which metrics to record based on the loaded part and connected instruments.
+
+        - Supply: enabled when at least one power supply / electronic load panel is present.
+        - Spectrum: enabled when a FieldFox spectrum analyzer is connected.
+        - Register: enabled when the loaded config defines a register_read_array.
+
+        Called after a config loads so the user does not have to tick the boxes manually.
+        """
+        try:
+            has_fieldfox = False
+            has_supply = False
+            if hasattr(self, 'tabs'):
+                for i in range(self.tabs.count()):
+                    tname = type(self.tabs.widget(i)).__name__
+                    if tname == 'FieldFoxSAPanel':
+                        has_fieldfox = True
+                    elif tname in ('KeithleyPanel', 'KeysightELPanel', 'KeysightE36233APanel'):
+                        has_supply = True
+
+            has_registers = bool(self._resolve_register_read_array())
+
+            if hasattr(self, 'supply_record_toggle'):
+                self.supply_record_toggle.setChecked(has_supply)
+            if hasattr(self, 'spectrum_record_toggle'):
+                self.spectrum_record_toggle.setChecked(has_fieldfox)
+            if hasattr(self, 'register_record_toggle'):
+                self.register_record_toggle.setChecked(has_registers)
+
+            try:
+                self.statusBar().showMessage(
+                    'Auto-selected recording: '
+                    f"Supply={'on' if has_supply else 'off'}, "
+                    f"Spectrum={'on' if has_fieldfox else 'off'}, "
+                    f"Register={'on' if has_registers else 'off'}", 4000)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def open_register_monitor(self):
         """Open (or raise) the live register monitor dialog."""
         from register_monitor import RegisterMonitorDialog

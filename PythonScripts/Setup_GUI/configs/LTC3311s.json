@@ -1,0 +1,63 @@
+{
+  "instruments": [
+    {
+      "type": "Keithley 2230",
+      "resource": "alias:Keithley 0",
+      "name": "Keithley 0",
+      "channels": {
+        "1": {
+          "voltage": "5.0",
+          "current": "2.0",
+          "output": true,
+          "name": "Vin"
+        },
+        "2": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH2"
+        },
+        "3": {
+          "voltage": "0.0",
+          "current": "0.0",
+          "output": false,
+          "name": "CH3"
+        }
+      }
+    },
+    {
+      "type": "Keysight EL34243A",
+      "resource": "alias:Keysight EL 0",
+      "name": "Keysight EL 0",
+      "channels": {
+        "1": {
+          "mode": "CC",
+          "value": "0.1",
+          "input": true,
+          "ramp_enabled": false,
+          "rise_time": "0",
+          "name": "Vout"
+        },
+        "2": {
+          "mode": "Disable",
+          "value": "0",
+          "input": false,
+          "ramp_enabled": false,
+          "rise_time": "0"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    "KeithleyChannel: Keithley 0 Channel 1"
+  ],
+  "use_sequence": true,
+  "program_logic_path": "",
+  "register_read_array": [],
+  "notes": {
+    "connections": "Keithley 0 (Power Supply)\n    CH1 \"Vin\" -> DUT VIN\nKeysight EL 0 (Electronic Load)\n    CH1 \"Vout\" <- DUT VOUT (load)\n    CH2 unused",
+    "sources": "Keithley 0 - VIN source\nKeysight EL 0 - VOUT load",
+    "monitoring": "Monitor VIN from Keithley CH1 and VOUT/current on EL CH1.",
+    "general": "Config: LTC3311s\nSingle-supply bring-up with one active load channel on VOUT."
+  }
+}

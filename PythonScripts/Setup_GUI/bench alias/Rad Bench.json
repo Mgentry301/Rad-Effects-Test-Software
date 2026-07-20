@@ -12,6 +12,7 @@
     "Keysight EL 1": "USB0::0x2A8D::0x3902::MY61002156::INSTR",
     "Hittite 3": "GPIB0::16::INSTR",
     "Keithley 3": "USB0::0x05E6::0x2230::9204311::INSTR",
-    "Keithley 4": "USB0::0x05E6::0x2230::802901012766910053::INSTR"
+    "Keithley 4": "USB0::0x05E6::0x2230::802901012766910053::INSTR",
+    "Unknown 0": "USB0::0x0957::0x17AC::MY55440180::INSTR"
   }
 }
