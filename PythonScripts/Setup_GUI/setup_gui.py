@@ -512,6 +512,17 @@ class MainWindow(
         tpower_row.addWidget(self.test_tab_power_btn)
         test2_layout.addLayout(tpower_row)
 
+        # Oscilloscope capture launcher on its own row below the power toggle.
+        oscope_row = QtWidgets.QHBoxLayout()
+        self.oscope_capture_btn = QtWidgets.QPushButton('Oscilloscope Capture')
+        self.oscope_capture_btn.setToolTip(
+            'Open the Trigger Capture tool: logs a scope screenshot each time the '
+            'oscilloscope hardware-triggers a single acquisition.')
+        self.oscope_capture_btn.clicked.connect(self.launch_trigger_capture)
+        oscope_row.addWidget(self.oscope_capture_btn)
+        oscope_row.addStretch(1)
+        test2_layout.addLayout(oscope_row)
+
         # --- Unified Record Controls ---
         record_row = QtWidgets.QHBoxLayout()
         # Prime button prepares threads and enables Start

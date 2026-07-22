@@ -273,6 +273,33 @@ class InstrumentMixin:
                 panels.append(w)
         return panels
 
+    def launch_trigger_capture(self):
+        """Launch the standalone oscilloscope triggered-screenshot capture tool.
+
+        Runs Oscope/Trigger_capture as a separate process so it has its own
+        window and does not block the Setup GUI event loop.
+        """
+        import sys
+        import subprocess
+
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+            script_path = os.path.join(repo_root, 'Oscope', 'Trigger_capture')
+            if not os.path.exists(script_path):
+                QtWidgets.QMessageBox.warning(
+                    self, 'Trigger Capture not found',
+                    f'Could not find the capture tool at:\n{script_path}')
+                return
+            subprocess.Popen([sys.executable, script_path], cwd=repo_root)
+            try:
+                self.statusBar().showMessage('Launched Oscilloscope Capture tool', 4000)
+            except Exception:
+                pass
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self, 'Launch failed',
+                f'Could not launch the Oscilloscope Capture tool:\n{e}')
+
     def get_instrument_names(self):
         names = []
         for i in range(self.tabs.count()):
