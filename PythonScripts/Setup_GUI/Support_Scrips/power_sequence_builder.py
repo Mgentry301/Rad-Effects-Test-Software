@@ -1,6 +1,48 @@
+import re
+
 from PyQt5 import QtWidgets
 
 class PowerSequenceBuilder(QtWidgets.QGroupBox):
+    # Sequence entries for individual channels may carry optional per-step
+    # voltage/current overrides encoded as a suffix, e.g.
+    #   "KeithleyChannel: Keithley1 Channel 2 @ V=3.3 I=0.1"
+    # When no suffix is present the value configured on the instrument tab is
+    # used (backwards-compatible with older saved configs).
+    @staticmethod
+    def parse_item(text):
+        """Split an entry into (base_label, voltage_override, current_override).
+
+        voltage_override / current_override are floats, or None when not set."""
+        if '@' not in text:
+            return text.strip(), None, None
+        base, _, sp = text.partition('@')
+        v = i = None
+        mv = re.search(r'V=([-\d.]+)', sp)
+        mi = re.search(r'I=([-\d.]+)', sp)
+        if mv:
+            try:
+                v = float(mv.group(1))
+            except Exception:
+                v = None
+        if mi:
+            try:
+                i = float(mi.group(1))
+            except Exception:
+                i = None
+        return base.strip(), v, i
+
+    @staticmethod
+    def format_item(base, v, i):
+        """Rebuild an entry string from a base label and optional overrides."""
+        parts = []
+        if v is not None:
+            parts.append(f'V={v:g}')
+        if i is not None:
+            parts.append(f'I={i:g}')
+        if not parts:
+            return base.strip()
+        return f'{base.strip()} @ ' + ' '.join(parts)
+
     def set_sequence(self, sequence):
         self.seq_list.clear()
         for item in sequence:
@@ -29,10 +71,19 @@ class PowerSequenceBuilder(QtWidgets.QGroupBox):
         layout.addLayout(add_row)
         self.seq_list = QtWidgets.QListWidget()
         self.seq_list.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+        self.seq_list.itemDoubleClicked.connect(lambda _item: self.edit_setpoints())
         layout.addWidget(self.seq_list)
+        btn_row = QtWidgets.QHBoxLayout()
+        self.edit_btn = QtWidgets.QPushButton('Edit Setpoints…')
+        self.edit_btn.setToolTip(
+            'Set a specific voltage/current for the selected channel step. '
+            'Leave blank to use the value from the instrument tab.')
+        self.edit_btn.clicked.connect(self.edit_setpoints)
+        btn_row.addWidget(self.edit_btn)
         self.remove_btn = QtWidgets.QPushButton('Remove Selected')
         self.remove_btn.clicked.connect(self.remove_selected)
-        layout.addWidget(self.remove_btn)
+        btn_row.addWidget(self.remove_btn)
+        layout.addLayout(btn_row)
         self.enable_checkbox = QtWidgets.QCheckBox('Use Power-Up Sequence')
         self.enable_checkbox.setChecked(False)
         layout.addWidget(self.enable_checkbox)
@@ -80,6 +131,60 @@ class PowerSequenceBuilder(QtWidgets.QGroupBox):
     def remove_selected(self):
         for item in self.seq_list.selectedItems():
             self.seq_list.takeItem(self.seq_list.row(item))
+    def edit_setpoints(self):
+        items = self.seq_list.selectedItems()
+        if not items:
+            QtWidgets.QMessageBox.information(
+                self, 'Edit Setpoints', 'Select a channel step first.')
+            return
+        item = items[0]
+        base, v, i = self.parse_item(item.text())
+        if not (base.startswith('KeithleyChannel:') or base.startswith('SupplyChannel:')):
+            QtWidgets.QMessageBox.information(
+                self, 'Edit Setpoints',
+                'Voltage/current setpoints can only be set on individual power-supply '
+                'channel steps (Keithley or E36233A channels). Whole-instrument and '
+                'delay steps are not supported.')
+            return
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle('Channel Setpoints')
+        form = QtWidgets.QFormLayout(dlg)
+        label = QtWidgets.QLabel(base)
+        label.setWordWrap(True)
+        form.addRow(label)
+        v_edit = QtWidgets.QLineEdit('' if v is None else f'{v:g}')
+        i_edit = QtWidgets.QLineEdit('' if i is None else f'{i:g}')
+        v_edit.setPlaceholderText('use instrument tab value')
+        i_edit.setPlaceholderText('use instrument tab value')
+        form.addRow('Voltage (V):', v_edit)
+        form.addRow('Current (A):', i_edit)
+        info = QtWidgets.QLabel('Leave a field blank to use the value set on the instrument tab.')
+        info.setWordWrap(True)
+        form.addRow(info)
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        def _parse(text):
+            text = text.strip()
+            if not text:
+                return None
+            try:
+                return float(text)
+            except ValueError:
+                return None
+        new_v = _parse(v_edit.text())
+        new_i = _parse(i_edit.text())
+        if v_edit.text().strip() and new_v is None:
+            QtWidgets.QMessageBox.warning(self, 'Edit Setpoints', 'Voltage must be a number.')
+            return
+        if i_edit.text().strip() and new_i is None:
+            QtWidgets.QMessageBox.warning(self, 'Edit Setpoints', 'Current must be a number.')
+            return
+        item.setText(self.format_item(base, new_v, new_i))
     def get_sequence(self):
         return [self.seq_list.item(i).text() for i in range(self.seq_list.count())]
     def use_sequence(self):

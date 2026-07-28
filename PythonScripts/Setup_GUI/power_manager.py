@@ -660,8 +660,11 @@ class PowerMixin:
             pass
         return []
 
-    def _e36233a_apply_channel(self, panel, ch, on=True):
-        """Apply set-points and output state to a single E36233A channel."""
+    def _e36233a_apply_channel(self, panel, ch, on=True, v=None, i=None):
+        """Apply set-points and output state to a single E36233A channel.
+
+        If ``v`` / ``i`` are provided they override the value configured on the
+        instrument tab for this step (used by per-step sequence setpoints)."""
         supply = getattr(panel, 'supply', None)
         if supply is None:
             return
@@ -671,11 +674,22 @@ class PowerMixin:
                     panel.sync_active_channel()
                 volts = getattr(panel, 'channel_voltages', ['0.0', '0.0'])
                 currs = getattr(panel, 'channel_currents', ['0.0', '0.0'])
-                v = volts[ch - 1] if (ch - 1) < len(volts) else '0.0'
-                c = currs[ch - 1] if (ch - 1) < len(currs) else '0.0'
-                supply.set_voltage(ch, v)
-                supply.set_current(ch, c)
+                v_tab = volts[ch - 1] if (ch - 1) < len(volts) else '0.0'
+                c_tab = currs[ch - 1] if (ch - 1) < len(currs) else '0.0'
+                v_val = v_tab if v is None else v
+                c_val = c_tab if i is None else i
+                supply.set_voltage(ch, v_val)
+                supply.set_current(ch, c_val)
                 supply.output_on(ch)
+                # Reflect any override back into the panel state/UI so it stays in sync
+                if (v is not None or i is not None):
+                    try:
+                        if v is not None and (ch - 1) < len(getattr(panel, 'channel_voltages', [])):
+                            panel.channel_voltages[ch - 1] = f'{v:g}'
+                        if i is not None and (ch - 1) < len(getattr(panel, 'channel_currents', [])):
+                            panel.channel_currents[ch - 1] = f'{i:g}'
+                    except Exception:
+                        pass
             else:
                 supply.output_off(ch)
             if getattr(panel, '_active_channel_index', 0) == (ch - 1) and hasattr(panel, 'onoff_btn'):
@@ -720,8 +734,14 @@ class PowerMixin:
                     return
                 item = sequence[idx]
                 self._log(f'Processing step: {item}')
-                if item.startswith('KeithleyChannel: '):
-                    name = item[len('KeithleyChannel: '):]
+                # Individual channel steps may carry per-step voltage/current
+                # overrides encoded in the label ("... @ V=.. I=..").
+                try:
+                    base_item, v_over, i_over = self.power_seq_builder.parse_item(item)
+                except Exception:
+                    base_item, v_over, i_over = item, None, None
+                if base_item.startswith('KeithleyChannel: '):
+                    name = base_item[len('KeithleyChannel: '):]
                     if 'Channel' in name:
                         parts = name.split('Channel')
                         tab_name = parts[0].strip()
@@ -738,6 +758,18 @@ class PowerMixin:
                                         I = float(widget.iam_edits[ch].text())
                                     except Exception:
                                         V, I = 0.0, 0.03
+                                    if v_over is not None:
+                                        V = v_over
+                                        try:
+                                            widget.vol_edits[ch].setText(f'{V:g}')
+                                        except Exception:
+                                            pass
+                                    if i_over is not None:
+                                        I = i_over
+                                        try:
+                                            widget.iam_edits[ch].setText(f'{I:g}')
+                                        except Exception:
+                                            pass
                                     widget.inst.set_voltage(ch, V)
                                     widget.inst.set_current(ch, I)
                                     for other_ch in (1, 2, 3):
@@ -750,8 +782,8 @@ class PowerMixin:
                                     widget.output_btns[ch].setText('Output On')
                                 break
                     QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
-                elif item.startswith('SupplyChannel: '):
-                    name = item[len('SupplyChannel: '):]
+                elif base_item.startswith('SupplyChannel: '):
+                    name = base_item[len('SupplyChannel: '):]
                     tab_name, ch = name, None
                     if 'Channel' in name:
                         parts = name.split('Channel')
@@ -765,11 +797,11 @@ class PowerMixin:
                             if self.tabs.tabText(i) == tab_name:
                                 widget = self.tabs.widget(i)
                                 if isinstance(widget, KeysightE36233APanel):
-                                    self._e36233a_apply_channel(widget, ch, on=True)
+                                    self._e36233a_apply_channel(widget, ch, on=True, v=v_over, i=i_over)
                                 break
                     QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
-                elif item.startswith('Instrument: '):
-                    name = item[len('Instrument: '):]
+                elif base_item.startswith('Instrument: '):
+                    name = base_item[len('Instrument: '):]
                     for i in range(self.tabs.count()):
                         tab_name = self.tabs.tabText(i)
                         if tab_name == name:
@@ -868,8 +900,8 @@ class PowerMixin:
                                 for ch in (1, 2):
                                     self._e36233a_apply_channel(widget, ch, on=True)
                     QtCore.QTimer.singleShot(100, lambda: run_step(idx + 1))
-                elif item.startswith('Delay: '):
-                    delay_val = float(item[len('Delay: '):-3])
+                elif base_item.startswith('Delay: '):
+                    delay_val = float(base_item[len('Delay: '):-3])
                     self._log(f'Waiting {delay_val} s')
                     QtCore.QTimer.singleShot(int(delay_val * 1000), lambda: run_step(idx + 1))
                 else:
