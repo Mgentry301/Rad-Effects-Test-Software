@@ -3,7 +3,7 @@ Multi-instrument GUI: Keithley 2230 panels + Keysight EL34243A panel.
 - Add instruments by typing SN or full VISA resource.
 - Choose instrument type on add (Keithley or Keysight).
 - Scan VISA to detect connected devices.
-- Each instrument gets its own tab and independent controls.
+- All instruments share one Setup page, each in its own column.
 
 Notes:
 - Keysight EL34243A wrapper uses common SCPI patterns for electronic loads
@@ -83,6 +83,7 @@ _warm_up_visa()
 from PyQt5 import QtWidgets, QtCore
 
 from Support_Scrips.power_sequence_builder import PowerSequenceBuilder
+from instrument_columns import InstrumentColumnsWidget
 
 # Mixin modules  (each adds a logical group of methods to MainWindow)
 from excel_manager import ExcelMixin
@@ -305,15 +306,16 @@ class MainWindow(
         top_row.addWidget(self.load_btn)
         setup_layout.addLayout(top_row)
 
-        # Tabs for instruments
-        self.tabs = QtWidgets.QTabWidget()
+        # All instrument panels shown side-by-side in columns on one page,
+        # so voltages/currents/frequencies for every instrument are visible
+        # and editable at once without switching tabs.
+        self.tabs = InstrumentColumnsWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
-        # Auto-pause FieldFox streaming when tab not active
-        try:
-            self.tabs.currentChanged.connect(self._on_tab_changed)
-        except Exception:
-            pass
+        # In the columns layout every SA panel is always visible, so each
+        # FieldFox streams its spectrum independently (controlled only by its
+        # own Pause/Start button). We intentionally do NOT couple streaming to
+        # the selected column -- clicking a supply must not freeze a live SA.
         setup_layout.addWidget(self.tabs)
 
     # Leave status blank until the initial VISA scan completes
